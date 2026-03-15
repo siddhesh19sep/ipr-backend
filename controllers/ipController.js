@@ -4,6 +4,7 @@ const crypto = require("crypto");
 const blockchainService = require("../services/blockchainService");
 const axios = require("axios");
 const { sendEmail } = require("../services/emailService");
+const stringSimilarity = require("string-similarity");
 
 // Create new IP
 exports.createIP = async (req, res) => {
@@ -181,5 +182,53 @@ exports.deleteIP = async (req, res) => {
         res.status(200).json({ message: "IP deleted successfully" });
     } catch (error) {
         res.status(500).json({ error: error.message });
+    }
+};
+
+// AI Plagiarism Scan
+exports.scanIP = async (req, res) => {
+    try {
+        const { title, description } = req.body;
+        if (!title || !description) {
+            return res.status(400).json({ error: "Title and description are required for AI scanning." });
+        }
+
+        const allIPs = await IP.find({}, 'title description owner').populate('owner', 'name');
+        
+        if (allIPs.length === 0) {
+            return res.status(200).json({ isUnique: true, highestScore: 0 });
+        }
+
+        let highestScore = 0;
+        let mostSimilarIP = null;
+
+        const incomingText = `${title} ${description}`.toLowerCase();
+
+        allIPs.forEach(ip => {
+            const existingText = `${ip.title} ${ip.description}`.toLowerCase();
+            const score = stringSimilarity.compareTwoStrings(incomingText, existingText);
+            
+            if (score > highestScore) {
+                highestScore = score;
+                mostSimilarIP = {
+                    title: ip.title,
+                    ownerName: ip.owner?.name || 'Unknown'
+                };
+            }
+        });
+
+        // 80% similarity threshold for plagiarism
+        if (highestScore >= 0.8) {
+            return res.status(200).json({ 
+                isUnique: false, 
+                highestScore, 
+                matchedIP: mostSimilarIP 
+            });
+        }
+
+        return res.status(200).json({ isUnique: true, highestScore });
+    } catch (error) {
+        console.error("AI Scan Error:", error);
+        res.status(500).json({ error: "Failed to run AI Copyright Scan." });
     }
 };

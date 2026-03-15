@@ -2,11 +2,12 @@ const express = require("express");
 const router = express.Router();
 const authMiddleware = require("../middleware/authMiddleware");
 const roleMiddleware = require("../middleware/roleMiddleware");
-const { createIP, getAllIPs, getIPById, updateIP, deleteIP } = require("../controllers/ipController");
+const { createIP, getAllIPs, getIPById, updateIP, deleteIP, scanIP } = require("../controllers/ipController");
 
 // Protect all IP routes
 router.use(authMiddleware);
 
+router.post("/scan", scanIP);
 router.post("/create", createIP);
 router.get("/all", getAllIPs);
 router.get("/:id", getIPById);

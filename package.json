@@ -38,6 +38,7 @@
     "nodemailer": "^8.0.1",
     "razorpay": "^2.9.6",
     "sequelize": "^6.37.7",
+    "string-similarity": "^4.0.4",
     "uuid": "^13.0.0",
     "winston": "^3.19.0"
   },
