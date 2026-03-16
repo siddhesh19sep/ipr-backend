@@ -1,4 +1,4 @@
-const UserModel = require("../models/User");
+const mongoose = require("mongoose");
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 const crypto = require("crypto");
@@ -8,14 +8,15 @@ const { sendEmail } = require("../services/emailService");
 exports.register = async (req, res) => {
     try {
         const { name, username, email, password, walletAddress } = req.body;
+        const User = mongoose.model("User");
 
         // Check if user already exists
-        const existingUsername = await UserModel.findOne({ username });
+        const existingUsername = await User.findOne({ username });
         if (existingUsername) {
             return res.status(400).json({ message: "Username already exists" });
         }
 
-        const existingEmail = await UserModel.findOne({ email });
+        const existingEmail = await User.findOne({ email });
         if (existingEmail) {
             return res.status(400).json({ message: "Email already exists" });
         }
@@ -23,7 +24,7 @@ exports.register = async (req, res) => {
         const hashedPassword = await bcrypt.hash(password, 10);
 
         // Create new user
-        const user = await UserModel.create({
+        const user = await User.create({
             name,
             username,
             email,
@@ -65,8 +66,9 @@ exports.register = async (req, res) => {
 exports.login = async (req, res) => {
     try {
         const { username, password } = req.body;
+        const User = mongoose.model("User");
 
-        const user = await UserModel.findOne({
+        const user = await User.findOne({
             $or: [{ username }, { email: username }]
         });
         if (!user) {
@@ -107,7 +109,8 @@ exports.login = async (req, res) => {
 exports.updateProfile = async (req, res) => {
     try {
         const { name, username, email, walletAddress } = req.body;
-        const user = await UserModel.findById(req.user.id);
+        const User = mongoose.model("User");
+        const user = await User.findById(req.user.id);
 
         if (!user) {
             return res.status(404).json({ message: "User not found" });
@@ -155,7 +158,8 @@ exports.uploadAvatar = async (req, res) => {
             return res.status(400).json({ message: "No image file provided" });
         }
 
-        const user = await UserModel.findById(req.user.id);
+        const User = mongoose.model("User");
+        const user = await User.findById(req.user.id);
         if (!user) {
             return res.status(404).json({ message: "User not found" });
         }
@@ -193,7 +197,8 @@ exports.forgotPassword = async (req, res) => {
         const { email } = req.body;
         console.log(`Searching for user with email: ${email}`);
         
-        const user = await UserModel.findOne({ email });
+        const User = mongoose.model("User");
+        const user = await User.findOne({ email });
 
         if (!user) {
             return res.status(404).json({ message: "User not found with this email." });
@@ -237,7 +242,8 @@ exports.resetPassword = async (req, res) => {
         const { token } = req.params;
         const { password } = req.body;
 
-        const user = await UserModel.findOne({
+        const User = mongoose.model("User");
+        const user = await User.findOne({
             resetPasswordToken: token,
             resetPasswordExpires: { $gt: Date.now() }
         });
