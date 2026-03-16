@@ -1,6 +1,8 @@
 const User = require("../models/User");
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
+const crypto = require("crypto");
+const { sendEmail } = require("../services/emailService");
 
 // Register User
 exports.register = async (req, res) => {
@@ -196,15 +198,15 @@ exports.forgotPassword = async (req, res) => {
         }
 
         // Generate Token
-        const crypto = require("crypto");
         const resetToken = crypto.randomBytes(32).toString("hex");
+        console.log(`Generating reset token for ${email}`);
         
         user.resetPasswordToken = resetToken;
         user.resetPasswordExpires = Date.now() + 3600000; // 1 hour
         await user.save();
 
         // Send Email
-        const { sendEmail } = require("../services/emailService");
+        console.log(`Attempting to send recovery email to ${user.email}`);
         const resetUrl = `https://ipr-frontend-lovat.vercel.app/reset-password/${resetToken}`;
         
         const subject = "Password Reset Request - IPR Protocol";
@@ -214,6 +216,7 @@ exports.forgotPassword = async (req, res) => {
                      `If you did not request this, please ignore this email and your password will remain unchanged.\n`;
         
         await sendEmail(user.email, subject, text);
+        console.log(`Recovery email status: Dispatched for ${user.email}`);
 
         res.status(200).json({ message: "Recovery email sent successfully." });
     } catch (error) {
