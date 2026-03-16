@@ -1,4 +1,5 @@
 const mongoose = require("mongoose");
+require("../models/User"); // Ensure model is registered
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 const crypto = require("crypto");
