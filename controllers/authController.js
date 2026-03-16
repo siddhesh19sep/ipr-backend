@@ -213,8 +213,8 @@ exports.forgotPassword = async (req, res) => {
         user.resetPasswordExpires = Date.now() + 3600000; // 1 hour
         await user.save();
 
-        // Send Email
-        console.log(`Attempting to send recovery email to ${user.email}`);
+        // Send Email (Non-blocking background task)
+        console.log(`Queueing recovery email for ${user.email}`);
         const resetUrl = `https://ipr-frontend-lovat.vercel.app/reset-password/${resetToken}`;
         
         const subject = "Password Reset Request - IPR Protocol";
@@ -223,10 +223,12 @@ exports.forgotPassword = async (req, res) => {
                      `${resetUrl}\n\n` +
                      `If you did not request this, please ignore this email and your password will remain unchanged.\n`;
         
-        await sendEmail(user.email, subject, text);
-        console.log(`Recovery email status: Dispatched for ${user.email}`);
+        // Don't 'await' here so we can respond to the user immediately
+        sendEmail(user.email, subject, text).catch(err => {
+            console.error(`Background Email Error for ${user.email}:`, err);
+        });
 
-        res.status(200).json({ message: "Recovery email sent successfully." });
+        res.status(200).json({ message: "Recovery email has been dispatched. Please check your inbox shortly." });
     } catch (error) {
         console.error("Forgot Password Error:", error);
         res.status(500).json({ 
