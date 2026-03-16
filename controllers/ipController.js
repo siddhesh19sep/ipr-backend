@@ -232,3 +232,45 @@ exports.scanIP = async (req, res) => {
         res.status(500).json({ error: "Failed to run AI Copyright Scan." });
     }
 };
+
+// Public IP Verification
+exports.verifyPublicIP = async (req, res) => {
+    try {
+        const { hash } = req.params;
+        
+        let ip;
+        try {
+            ip = await IP.findById(hash).populate("owner", "name");
+        } catch (e) {
+            ip = await IP.findOne({ txHash: hash }).populate("owner", "name");
+        }
+        
+        if (!ip && hash) {
+            ip = await IP.findOne({ fileHash: hash }).populate("owner", "name");
+        }
+        
+        if (!ip) {
+            return res.status(404).json({ message: "No Intellectual Property found with this Registration ID or Hash." });
+        }
+
+        if (ip.status !== 'Approved') {
+            return res.status(404).json({ message: "This Intellectual Property is currently pending verification and is not yet publicly certified." });
+        }
+
+        // Return only safe, public data
+        res.status(200).json({
+            title: ip.title,
+            description: ip.description,
+            category: ip.category,
+            ownerName: ip.owner.name,
+            registrationDate: ip.createdAt,
+            expirationDate: ip.expirationDate,
+            txHash: ip.txHash,
+            fileHash: ip.fileHash,
+            status: ip.status
+        });
+    } catch (error) {
+        console.error("Public Verify Error:", error);
+        res.status(500).json({ error: "Failed to verify IP." });
+    }
+};
