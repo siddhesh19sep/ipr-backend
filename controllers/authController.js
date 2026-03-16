@@ -1,4 +1,4 @@
-const User = require("../models/User");
+const UserModel = require("../models/User");
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 const crypto = require("crypto");
@@ -10,12 +10,12 @@ exports.register = async (req, res) => {
         const { name, username, email, password, walletAddress } = req.body;
 
         // Check if user already exists
-        const existingUsername = await User.findOne({ username });
+        const existingUsername = await UserModel.findOne({ username });
         if (existingUsername) {
             return res.status(400).json({ message: "Username already exists" });
         }
 
-        const existingEmail = await User.findOne({ email });
+        const existingEmail = await UserModel.findOne({ email });
         if (existingEmail) {
             return res.status(400).json({ message: "Email already exists" });
         }
@@ -23,7 +23,7 @@ exports.register = async (req, res) => {
         const hashedPassword = await bcrypt.hash(password, 10);
 
         // Create new user
-        const user = await User.create({
+        const user = await UserModel.create({
             name,
             username,
             email,
@@ -66,7 +66,7 @@ exports.login = async (req, res) => {
     try {
         const { username, password } = req.body;
 
-        const user = await User.findOne({
+        const user = await UserModel.findOne({
             $or: [{ username }, { email: username }]
         });
         if (!user) {
@@ -107,7 +107,7 @@ exports.login = async (req, res) => {
 exports.updateProfile = async (req, res) => {
     try {
         const { name, username, email, walletAddress } = req.body;
-        const user = await User.findById(req.user.id);
+        const user = await UserModel.findById(req.user.id);
 
         if (!user) {
             return res.status(404).json({ message: "User not found" });
@@ -155,7 +155,7 @@ exports.uploadAvatar = async (req, res) => {
             return res.status(400).json({ message: "No image file provided" });
         }
 
-        const user = await User.findById(req.user.id);
+        const user = await UserModel.findById(req.user.id);
         if (!user) {
             return res.status(404).json({ message: "User not found" });
         }
@@ -191,7 +191,9 @@ exports.uploadAvatar = async (req, res) => {
 exports.forgotPassword = async (req, res) => {
     try {
         const { email } = req.body;
-        const user = await User.findOne({ email });
+        console.log(`Searching for user with email: ${email}`);
+        
+        const user = await UserModel.findOne({ email });
 
         if (!user) {
             return res.status(404).json({ message: "User not found with this email." });
@@ -235,7 +237,7 @@ exports.resetPassword = async (req, res) => {
         const { token } = req.params;
         const { password } = req.body;
 
-        const user = await User.findOne({
+        const user = await UserModel.findOne({
             resetPasswordToken: token,
             resetPasswordExpires: { $gt: Date.now() }
         });
