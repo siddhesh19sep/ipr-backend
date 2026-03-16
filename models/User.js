@@ -32,7 +32,9 @@ const userSchema = new mongoose.Schema({
     avatarUrl: {
         type: String,
         default: ""
-    }
+    },
+    resetPasswordToken: String,
+    resetPasswordExpires: Date
 }, { timestamps: true });
 
 module.exports = mongoose.model("User", userSchema);

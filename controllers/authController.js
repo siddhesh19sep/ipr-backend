@@ -184,3 +184,68 @@ exports.uploadAvatar = async (req, res) => {
         res.status(500).json({ error: error.message });
     }
 };
+
+// Forgot Password
+exports.forgotPassword = async (req, res) => {
+    try {
+        const { email } = req.body;
+        const user = await User.findOne({ email });
+
+        if (!user) {
+            return res.status(404).json({ message: "User not found with this email." });
+        }
+
+        // Generate Token
+        const crypto = require("crypto");
+        const resetToken = crypto.randomBytes(32).toString("hex");
+        
+        user.resetPasswordToken = resetToken;
+        user.resetPasswordExpires = Date.now() + 3600000; // 1 hour
+        await user.save();
+
+        // Send Email
+        const { sendEmail } = require("../services/emailService");
+        const resetUrl = `https://ipr-frontend-lovat.vercel.app/reset-password/${resetToken}`;
+        
+        const subject = "Password Reset Request - IPR Protocol";
+        const text = `You are receiving this because you (or someone else) have requested the reset of the password for your account.\n\n` +
+                     `Please click on the following link, or paste this into your browser to complete the process within one hour of receiving it:\n\n` +
+                     `${resetUrl}\n\n` +
+                     `If you did not request this, please ignore this email and your password will remain unchanged.\n`;
+        
+        await sendEmail(user.email, subject, text);
+
+        res.status(200).json({ message: "Recovery email sent successfully." });
+    } catch (error) {
+        console.error("Forgot Password Error:", error);
+        res.status(500).json({ error: "Failed to process recovery request." });
+    }
+};
+
+// Reset Password
+exports.resetPassword = async (req, res) => {
+    try {
+        const { token } = req.params;
+        const { password } = req.body;
+
+        const user = await User.findOne({
+            resetPasswordToken: token,
+            resetPasswordExpires: { $gt: Date.now() }
+        });
+
+        if (!user) {
+            return res.status(400).json({ message: "Password reset token is invalid or has expired." });
+        }
+
+        // Hash new password
+        user.password = await bcrypt.hash(password, 10);
+        user.resetPasswordToken = undefined;
+        user.resetPasswordExpires = undefined;
+        await user.save();
+
+        res.status(200).json({ message: "Password has been updated successfully. You can now log in." });
+    } catch (error) {
+        console.error("Reset Password Error:", error);
+        res.status(500).json({ error: "Failed to reset password." });
+    }
+};
