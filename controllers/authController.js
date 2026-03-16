@@ -221,7 +221,11 @@ exports.forgotPassword = async (req, res) => {
         res.status(200).json({ message: "Recovery email sent successfully." });
     } catch (error) {
         console.error("Forgot Password Error:", error);
-        res.status(500).json({ error: "Failed to process recovery request." });
+        res.status(500).json({ 
+            error: "Failed to process recovery request.",
+            details: error.message,
+            stack: error.stack 
+        });
     }
 };
 
