@@ -12,19 +12,26 @@ const initializeTransporter = async () => {
     const isRealSMTP = process.env.EMAIL_USER && process.env.EMAIL_PASS;
 
     if (isRealSMTP) {
-        console.log("Initializing Real SMTP Email Service...");
+        console.log(`Initializing Real SMTP Service for: ${process.env.EMAIL_USER}`);
         transporter = nodemailer.createTransport({
             host: "smtp.gmail.com",
-            port: 587,
-            secure: false, // Use STARTTLS
+            port: 465, // Trying 465 again but with verification
+            secure: true, 
             auth: {
                 user: process.env.EMAIL_USER,
-                pass: process.env.EMAIL_PASS // Gmail App Password
+                pass: process.env.EMAIL_PASS
             },
-            connectionTimeout: 15000,
-            greetingTimeout: 15000,
-            debug: true, // Enable debug output
-            logger: true  // Log protocol traffic
+            debug: true,
+            logger: true
+        });
+
+        // Verify connection immediately
+        transporter.verify((error, success) => {
+            if (error) {
+                console.error("SMTP Verification Failed:", error);
+            } else {
+                console.log("SMTP Server is ready to take our messages");
+            }
         });
     } else {
         console.log("No SMTP credentials found. Initializing Mock Email Service (Ethereal)...");
