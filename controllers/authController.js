@@ -267,3 +267,25 @@ exports.resetPassword = async (req, res) => {
         res.status(500).json({ error: "Failed to reset password." });
     }
 };
+
+// Test Email Connection (Restricted)
+exports.testEmail = async (req, res) => {
+    try {
+        const { sendEmail } = require("../services/emailService");
+        const result = await sendEmail(req.body.email || "test@example.com", "IPR Protocol - Email Diagnostic", "If you see this, your SMTP configuration is 100% correct!");
+        res.status(200).json({ 
+            success: true, 
+            message: "SMTP test successful! Check your inbox.", 
+            info: result 
+        });
+    } catch (error) {
+        console.error("Diagnostic Email Error:", error);
+        res.status(500).json({ 
+            success: false, 
+            message: "SMTP Test Failed", 
+            error: error.message,
+            code: error.code,
+            command: error.command
+        });
+    }
+};
