@@ -3,7 +3,7 @@ require("../models/User"); // Ensure model is registered
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 const crypto = require("crypto");
-const { sendEmail } = require("../services/emailService");
+const { sendEmail, getServiceStatus } = require("../services/emailService");
 
 // Register User
 exports.register = async (req, res) => {
@@ -228,7 +228,13 @@ exports.forgotPassword = async (req, res) => {
             console.error(`Background Email Error for ${user.email}:`, err);
         });
 
-        res.status(200).json({ message: "Recovery email has been dispatched. Please check your inbox shortly." });
+        res.status(200).json({ 
+            message: "Recovery email has been dispatched. Please check your inbox shortly.",
+            debug: {
+                provider: getServiceStatus().provider,
+                isReady: getServiceStatus().isReady
+            }
+        });
     } catch (error) {
         console.error("Forgot Password Error:", error);
         res.status(500).json({ 
@@ -236,6 +242,16 @@ exports.forgotPassword = async (req, res) => {
             details: error.message,
             stack: error.stack 
         });
+    }
+};
+
+// Get Email Service Status
+exports.getEmailStatus = (req, res) => {
+    try {
+        const status = getServiceStatus();
+        res.status(200).json(status);
+    } catch (error) {
+        res.status(500).json({ error: error.message });
     }
 };
 

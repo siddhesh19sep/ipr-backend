@@ -1,6 +1,12 @@
 const nodemailer = require("nodemailer");
 
 let transporter;
+let transporterStatus = {
+    provider: "Initializing",
+    isReady: false,
+    error: null,
+    user: null
+};
 
 /**
  * Initializes the email transporter.
@@ -13,9 +19,12 @@ const initializeTransporter = async () => {
 
     if (isRealSMTP) {
         console.log(`Initializing Real SMTP Service for: ${process.env.EMAIL_USER}`);
+        transporterStatus.provider = "SMTP";
+        transporterStatus.user = process.env.EMAIL_USER.replace(/(.{3}).*(@.*)/, "$1***$2"); // Mask email
+
         transporter = nodemailer.createTransport({
             host: "smtp.gmail.com",
-            port: 465, // Trying 465 again but with verification
+            port: 465,
             secure: true, 
             auth: {
                 user: process.env.EMAIL_USER,
@@ -29,12 +38,17 @@ const initializeTransporter = async () => {
         transporter.verify((error, success) => {
             if (error) {
                 console.error("SMTP Verification Failed:", error);
+                transporterStatus.isReady = false;
+                transporterStatus.error = error.message;
             } else {
                 console.log("SMTP Server is ready to take our messages");
+                transporterStatus.isReady = true;
+                transporterStatus.error = null;
             }
         });
     } else {
         console.log("No SMTP credentials found. Initializing Mock Email Service (Ethereal)...");
+        transporterStatus.provider = "Mock";
         try {
             const account = await nodemailer.createTestAccount();
             transporter = nodemailer.createTransport({
@@ -46,9 +60,13 @@ const initializeTransporter = async () => {
                     pass: account.pass
                 }
             });
+            transporterStatus.isReady = true;
+            transporterStatus.user = account.user;
             console.log("Mock Email Service initialized. Emails will NOT reach real inboxes.");
         } catch (err) {
             console.error("Failed to initialize Mock Email Service:", err.message);
+            transporterStatus.isReady = false;
+            transporterStatus.error = err.message;
         }
     }
 };
@@ -93,4 +111,11 @@ exports.sendEmail = async (to, subject, text, html = "") => {
         console.error("Critical Email Error:", error);
         throw error;
     }
+};
+
+/**
+ * Returns the current status of the email transporter.
+ */
+exports.getServiceStatus = () => {
+    return transporterStatus;
 };
