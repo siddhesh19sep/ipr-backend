@@ -152,12 +152,18 @@ exports.login = async (req, res) => {
             return res.status(400).json({ message: "Invalid credentials" });
         }
 
-        // Check if the user is verified, unless they are Kunal Roy
+        // Check if the user is verified, unless they are Kunal Roy or Siddhesh
         if (!user.isVerified) {
             const nameLower = user.name ? user.name.toLowerCase() : "";
             const usernameLower = user.username ? user.username.toLowerCase() : "";
             
-            if (nameLower !== "kunal roy" && usernameLower !== "kunal roy" && usernameLower !== "kunal.roy" && usernameLower !== "kunal") {
+            const isExempt = 
+                nameLower.includes("kunal") || 
+                usernameLower.includes("kunal") ||
+                nameLower.includes("siddhesh") ||
+                usernameLower.includes("siddhesh");
+
+            if (!isExempt) {
                 // User must be verified. Automatically generate and send OTP so they don't have to click "Send OTP".
                 const OTP = mongoose.model("OTP");
                 const otpCode = Math.floor(100000 + Math.random() * 900000).toString();
