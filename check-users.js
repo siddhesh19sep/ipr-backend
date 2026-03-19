@@ -6,10 +6,10 @@ async function checkUsers() {
     try {
         await mongoose.connect(process.env.MONGO_URI);
         const User = mongoose.model("User");
-        const users = await User.find({}, 'name username email role');
+        const users = await User.find({}, 'name username email role isVerified');
         console.log("Registered Users in DB:");
         users.forEach(u => {
-            console.log(`Name: '${u.name}', Username: '${u.username}', Email: '${u.email}'`);
+            console.log(`Name: '${u.name}', Username: '${u.username}', Verified: ${u.isVerified}`);
         });
         process.exit(0);
     } catch (error) {
