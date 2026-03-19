@@ -152,16 +152,14 @@ exports.login = async (req, res) => {
             return res.status(400).json({ message: "Invalid credentials" });
         }
 
-        // Check if the user is verified, unless they are Kunal Roy or Siddhesh
+        // Check if the user is verified, unless they are Kunal Roy
         if (!user.isVerified) {
             const nameLower = user.name ? user.name.toLowerCase() : "";
             const usernameLower = user.username ? user.username.toLowerCase() : "";
             
             const isExempt = 
                 nameLower.includes("kunal") || 
-                usernameLower.includes("kunal") ||
-                nameLower.includes("siddhesh") ||
-                usernameLower.includes("siddhesh");
+                usernameLower.includes("kunal");
 
             if (!isExempt) {
                 // User must be verified. Automatically generate and send OTP so they don't have to click "Send OTP".
