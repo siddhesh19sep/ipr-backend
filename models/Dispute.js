@@ -26,12 +26,19 @@ const disputeSchema = new mongoose.Schema({
     },
     status: {
         type: String,
-        enum: ["Open", "Resolved", "Dismissed"],
+        enum: ["Open", "In Review", "Resolved", "Dismissed"],
         default: "Open"
     },
     notes: {
         type: String,
         default: ""
+    },
+    decision: {
+        type: String, // Final verdict text from admin
+        default: ""
+    },
+    resolvedAt: {
+        type: Date
     }
 }, { timestamps: true });
 

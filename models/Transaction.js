@@ -29,6 +29,11 @@ const transactionSchema = new mongoose.Schema({
         enum: ["Credited", "Pending"],
         default: "Credited"
     },
+    licenseId: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "License",
+        required: false
+    },
     recipient: {
         type: mongoose.Schema.Types.ObjectId,
         ref: "User",

@@ -9,6 +9,9 @@ const authMiddleware = require("./middleware/authMiddleware");
 const ipRoutes = require("./routes/ipRoutes");
 const disputeRoutes = require("./routes/disputeRoutes");
 const transactionRoutes = require("./routes/transactionRoutes"); // Added transactionRoutes
+const searchRoutes = require("./routes/searchRoutes");
+const licenseRoutes = require("./routes/licenseRoutes");
+const alertRoutes = require("./routes/alertRoutes");
 const settingsRoutes = require('./routes/settingsRoutes');
 const dashboardRoutes = require("./routes/dashboardRoutes"); // Analytics
 const paymentRoutes = require('./routes/paymentRoutes');
@@ -36,6 +39,9 @@ app.get("/", (req, res) => {
 app.use("/api/auth", authRoutes);
 app.use("/api/ip", ipRoutes);
 app.use("/api/disputes", disputeRoutes);
+app.use("/api/search", searchRoutes);
+app.use("/api/licenses", licenseRoutes);
+app.use("/api/alerts", alertRoutes);
 app.use("/api/transactions", transactionRoutes);
 app.use('/api/settings', settingsRoutes);
 app.use("/api/dashboard", dashboardRoutes);

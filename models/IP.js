@@ -40,6 +40,20 @@ const ipSchema = new mongoose.Schema({
         type: String,
         enum: ["Pending", "Approved", "Rejected"],
         default: "Pending"
+    },
+    // Licensing Fields
+    isAvailableForLicense: {
+        type: Boolean,
+        default: false
+    },
+    licensePrice: {
+        type: Number,
+        default: 0
+    },
+    licenseType: {
+        type: String,
+        enum: ["Exclusive", "Non-Exclusive", "None"],
+        default: "None"
     }
 }, { timestamps: true });
 

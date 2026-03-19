@@ -62,6 +62,11 @@ exports.getCreatorStats = async (req, res) => {
         const transactions = await Transaction.find({ recipient: userId });
         const totalRoyalty = transactions.reduce((acc, tx) => acc + tx.amount, 0);
 
+        // Recent License Transactions
+        const recentTransactions = await Transaction.find({ recipient: userId })
+            .sort({ createdAt: -1 })
+            .limit(5);
+
         res.status(200).json({
             stats: {
                 totalAssets: myIPs.length,
@@ -70,7 +75,8 @@ exports.getCreatorStats = async (req, res) => {
                 openDisputes,
                 totalRoyalty
             },
-            recentAssets: myIPs.slice(0, 5) // Return up to 5 most recent
+            recentAssets: myIPs.slice(0, 5),
+            recentTransactions
         });
     } catch (error) {
         res.status(500).json({ error: error.message });

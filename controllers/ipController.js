@@ -1,4 +1,6 @@
 const IP = require("../models/IP");
+const Alert = require("../models/Alert");
+const Transaction = require("../models/Transaction");
 const SystemSettings = require("../models/SystemSettings");
 const crypto = require("crypto");
 const blockchainService = require("../services/blockchainService");
@@ -64,11 +66,20 @@ exports.createIP = async (req, res) => {
 // Get All IPs (Secured by Role)
 exports.getAllIPs = async (req, res) => {
     try {
+        const { search } = req.query;
         let query = {};
 
         // If the user is NOT an Admin or Verifier, restrict to only their own IPs
         if (req.user.role !== 'Admin' && req.user.role !== 'Verifier') {
             query = { owner: req.user.id };
+        }
+
+        // Add search filter if provided
+        if (search) {
+            query.$or = [
+                { title: { $regex: search, $options: 'i' } },
+                { description: { $regex: search, $options: 'i' } }
+            ];
         }
 
         const ips = await IP.find(query).populate("owner", "name email walletAddress");
@@ -94,7 +105,7 @@ exports.getIPById = async (req, res) => {
 // Update IP
 exports.updateIP = async (req, res) => {
     try {
-        const { title, description, category, status } = req.body;
+        const { title, description, category, status, isAvailableForLicense, licensePrice, licenseType } = req.body;
 
         const ip = await IP.findById(req.params.id).populate("owner");
         if (!ip) {
@@ -117,6 +128,13 @@ exports.updateIP = async (req, res) => {
         ip.title = isOwner ? (title || ip.title) : ip.title;
         ip.description = isOwner ? (description || ip.description) : ip.description;
         ip.category = isOwner ? (category || ip.category) : ip.category;
+        
+        // Licensing Updates
+        if (isOwner) {
+            ip.isAvailableForLicense = isAvailableForLicense !== undefined ? isAvailableForLicense : ip.isAvailableForLicense;
+            ip.licensePrice = licensePrice !== undefined ? licensePrice : ip.licensePrice;
+            ip.licenseType = licenseType || ip.licenseType;
+        }
 
         let oldStatus = ip.status;
 
@@ -222,7 +240,16 @@ exports.scanIP = async (req, res) => {
             return res.status(200).json({ 
                 isUnique: false, 
                 highestScore, 
-                matchedIP: mostSimilarIP 
+                matchedIP: mostSimilarIP,
+                report: `High similarity (${(highestScore * 100).toFixed(1)}%) detected with an existing asset owned by ${mostSimilarIP.ownerName}. Registration blocked.`
+            });
+        }
+
+        if (highestScore > 0.4) {
+             return res.status(200).json({ 
+                isUnique: true, 
+                highestScore, 
+                warning: `Moderate similarity (${(highestScore * 100).toFixed(1)}%) detected. Ensure your work is original to avoid future disputes.`
             });
         }
 
@@ -272,5 +299,156 @@ exports.verifyPublicIP = async (req, res) => {
     } catch (error) {
         console.error("Public Verify Error:", error);
         res.status(500).json({ error: "Failed to verify IP." });
+    }
+};
+
+/**
+ * Renew an existing IP registration
+ */
+exports.renewIP = async (req, res) => {
+    try {
+        const { durationYears } = req.body;
+        const ip = await IP.findById(req.params.id);
+        
+        if (!ip) return res.status(404).json({ message: "Asset not found" });
+        if (ip.owner.toString() !== req.user.id) return res.status(403).json({ message: "Not authorized" });
+
+        const yearsToAdd = durationYears || 1;
+        const currentExpiration = ip.expirationDate || new Date();
+        const baseDate = currentExpiration > new Date() ? currentExpiration : new Date();
+        
+        const newExpiration = new Date(baseDate);
+        newExpiration.setFullYear(newExpiration.getFullYear() + yearsToAdd);
+
+        const renewalCost = 1000 * yearsToAdd; 
+
+        ip.expirationDate = newExpiration;
+        await ip.save();
+
+        // Record Renewal Transaction
+        await Transaction.create({
+            txId: `TX-REN-${Date.now().toString(36).toUpperCase()}`,
+            asset: ip._id,
+            assetTitle: ip.title,
+            type: "Renewal Fee",
+            amount: renewalCost,
+            status: "Debited",
+            recipient: "System"
+        });
+
+        res.status(200).json({
+            message: "IP renewed successfully",
+            newExpiration,
+            ip
+        });
+
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+};
+
+/**
+ * Utility to check and notify for expiring assets
+ */
+exports.checkExpiringAssets = async (req, res) => {
+    try {
+        const thirtyDaysFromNow = new Date();
+        thirtyDaysFromNow.setDate(thirtyDaysFromNow.getDate() + 30);
+
+        const expiringIPs = await IP.find({
+            expirationDate: { $lte: thirtyDaysFromNow, $gt: new Date() }
+        });
+
+        let alertCount = 0;
+        for (const ip of expiringIPs) {
+            const recentAlert = await Alert.findOne({
+                user: ip.owner,
+                relatedId: ip._id,
+                type: "Expiration",
+                createdAt: { $gt: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) }
+            });
+
+            if (!recentAlert) {
+                await Alert.create({
+                    user: ip.owner,
+                    title: "IP Asset Expiring Soon",
+                    message: `Your asset "${ip.title}" is set to expire on ${ip.expirationDate.toLocaleDateString()}. Please renew it to maintain protection.`,
+                    type: "Expiration",
+                    relatedId: ip._id
+                });
+                alertCount++;
+            }
+        }
+
+        res.status(200).json({ message: `Checked assets. Dispatched ${alertCount} alerts.` });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+};
+
+/**
+ * Transfer Ownership of an IP Asset
+ */
+exports.transferIP = async (req, res) => {
+    try {
+        const { newOwnerEmail } = req.body;
+        const ip = await IP.findById(req.params.id);
+        const User = require("../models/User");
+
+        if (!ip) return res.status(404).json({ message: "Asset not found" });
+        if (ip.owner.toString() !== req.user.id) {
+            return res.status(403).json({ message: "Only the current owner can transfer this asset" });
+        }
+
+        const newOwner = await User.findOne({ email: newOwnerEmail });
+        if (!newOwner) {
+            return res.status(404).json({ message: "New owner user not found. They must be registered first." });
+        }
+
+        if (newOwner._id.toString() === req.user.id) {
+            return res.status(400).json({ message: "You are already the owner" });
+        }
+
+        const oldOwnerId = ip.owner;
+        ip.owner = newOwner._id;
+        // Optionally update history or create a transaction
+        await ip.save();
+
+        // 1. Create Transaction for Transfer
+        await Transaction.create({
+            txId: `TX-TRF-${Date.now().toString(36).toUpperCase()}`,
+            asset: ip._id,
+            assetTitle: ip.title,
+            type: "Ownership Transfer",
+            amount: 0,
+            status: "Completed",
+            recipient: newOwner.name
+        });
+
+        // 2. Notify Old Owner
+        await Alert.create({
+            user: oldOwnerId,
+            title: "Ownership Transferred",
+            message: `You have successfully transferred ownership of "${ip.title}" to ${newOwner.name}.`,
+            type: "System",
+            relatedId: ip._id
+        });
+
+        // 3. Notify New Owner
+        await Alert.create({
+            user: newOwner._id,
+            title: "Asset Received",
+            message: `You are now the legal owner of the IP asset: "${ip.title}".`,
+            type: "System",
+            relatedId: ip._id
+        });
+
+        res.status(200).json({
+            message: "Ownership transferred successfully",
+            ip
+        });
+
+    } catch (error) {
+        res.status(500).json({ error: error.message });
     }
 };

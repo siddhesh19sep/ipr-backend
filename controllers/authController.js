@@ -215,7 +215,8 @@ exports.forgotPassword = async (req, res) => {
 
         // Send Email (Non-blocking background task)
         console.log(`Queueing recovery email for ${user.email}`);
-        const resetUrl = `https://ipr-frontend-lovat.vercel.app/reset-password/${resetToken}`;
+        const frontendUrl = process.env.FRONTEND_URL || "http://localhost:3000";
+        const resetUrl = `${frontendUrl}/reset-password/${resetToken}`;
         
         const subject = "Password Reset Request - IPR Protocol";
         const text = `You are receiving this because you (or someone else) have requested the reset of the password for your account.\n\n` +
