@@ -41,11 +41,12 @@ exports.sendOtp = async (req, res) => {
             <p>This code will expire in 5 minutes.</p>
         `;
 
-        await sendEmail({
-            email,
-            subject: "Your IPRChain Verification Code",
+        await sendEmail(
+            email, 
+            "Your IPRChain Verification Code", 
+            `Your OTP is ${otpCode}`, 
             message
-        });
+        );
 
         res.status(200).json({ message: "Verification code sent to your email." });
 

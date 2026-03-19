@@ -1,0 +1,1 @@
+{"status":404,"data":"<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n<meta charset=\"utf-8\">\n<title>Error</title>\n</head>\n<body>\n<pre>Cannot POST /api/auth/send-otp</pre>\n</body>\n</html>\n"}
