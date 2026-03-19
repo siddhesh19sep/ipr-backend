@@ -1,17 +1,82 @@
 const mongoose = require("mongoose");
 require("../models/User"); // Ensure model is registered
+require("../models/OTP"); // Ensure model is registered
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 const crypto = require("crypto");
 const { sendEmail, getServiceStatus } = require("../services/emailService");
 
+// Send OTP for Registration
+exports.sendOtp = async (req, res) => {
+    try {
+        const { email, username } = req.body;
+        const User = mongoose.model("User");
+        const OTP = mongoose.model("OTP");
+
+        if (!email || !username) {
+            return res.status(400).json({ message: "Email and username are required." });
+        }
+
+        // Check if user already exists
+        const existingUser = await User.findOne({ $or: [{ email }, { username }] });
+        if (existingUser) {
+            return res.status(400).json({ message: "An account with this email or username already exists." });
+        }
+
+        // Generate a 6-digit OTP
+        const otpCode = Math.floor(100000 + Math.random() * 900000).toString();
+
+        // Save or update the OTP in the database
+        await OTP.findOneAndUpdate(
+            { email },
+            { otp: otpCode, createdAt: Date.now() },
+            { upsert: true, new: true }
+        );
+
+        // Send Email
+        const message = `
+            <h2>Email Verification</h2>
+            <p>Your one-time password (OTP) for registering at IPRChain is:</p>
+            <h1 style="color: #4f46e5; letter-spacing: 5px;">${otpCode}</h1>
+            <p>This code will expire in 5 minutes.</p>
+        `;
+
+        await sendEmail({
+            email,
+            subject: "Your IPRChain Verification Code",
+            message
+        });
+
+        res.status(200).json({ message: "Verification code sent to your email." });
+
+    } catch (error) {
+        console.error("Error sending OTP:", error);
+        res.status(500).json({ error: "Failed to send verification code. Please try again." });
+    }
+};
+
 // Register User
 exports.register = async (req, res) => {
     try {
-        const { name, username, email, password, walletAddress } = req.body;
+        const { name, username, email, password, walletAddress, otp } = req.body;
         const User = mongoose.model("User");
+        const OTP = mongoose.model("OTP");
 
-        // Check if user already exists
+        if (!otp) {
+            return res.status(400).json({ message: "Verification code is required." });
+        }
+
+        // Verify the OTP
+        const otpRecord = await OTP.findOne({ email });
+        if (!otpRecord) {
+            return res.status(400).json({ message: "Verification code has expired or was not requested." });
+        }
+
+        if (otpRecord.otp !== otp) {
+            return res.status(400).json({ message: "Invalid verification code." });
+        }
+
+        // Check again if user already exists
         const existingUsername = await User.findOne({ username });
         if (existingUsername) {
             return res.status(400).json({ message: "Username already exists" });
@@ -41,6 +106,7 @@ exports.register = async (req, res) => {
             { expiresIn: "1d" }
         );
 
+        // Return success message and token
         res.status(201).json({
             message: "User registered and logged in successfully",
             token,
@@ -54,6 +120,9 @@ exports.register = async (req, res) => {
                 avatarUrl: user.avatarUrl
             }
         });
+
+        // Delete the OTP record since it's used
+        await OTP.deleteOne({ email });
 
     } catch (error) {
         if (error.code === 11000 && error.keyPattern && error.keyPattern.walletAddress) {
