@@ -97,7 +97,8 @@ exports.register = async (req, res) => {
             email,
             password: hashedPassword,
             walletAddress: walletAddress,
-            role: "User" // Default to User, Admins are usually set manually in DB
+            role: "User", // Default to User, Admins are usually set manually in DB
+            isVerified: true // Set to true as they just verified using OTP
         });
 
         // Automatically log the user in upon successful registration
@@ -149,6 +150,49 @@ exports.login = async (req, res) => {
         const isMatch = await bcrypt.compare(password, user.password);
         if (!isMatch) {
             return res.status(400).json({ message: "Invalid credentials" });
+        }
+
+        // Check if the user is verified, unless they are Kunal Roy
+        if (!user.isVerified) {
+            const nameLower = user.name ? user.name.toLowerCase() : "";
+            const usernameLower = user.username ? user.username.toLowerCase() : "";
+            
+            if (nameLower !== "kunal roy" && usernameLower !== "kunal roy" && usernameLower !== "kunal.roy" && usernameLower !== "kunal") {
+                // User must be verified. Automatically generate and send OTP so they don't have to click "Send OTP".
+                const OTP = mongoose.model("OTP");
+                const otpCode = Math.floor(100000 + Math.random() * 900000).toString();
+
+                await OTP.findOneAndUpdate(
+                    { email: user.email },
+                    { otp: otpCode, createdAt: Date.now() },
+                    { upsert: true, new: true }
+                );
+
+                const message = `
+                    <h2>Email Verification Required</h2>
+                    <p>Welcome back! We are upgrading our security. Please verify your email with this one-time password (OTP):</p>
+                    <h1 style="color: #4f46e5; letter-spacing: 5px;">${otpCode}</h1>
+                    <p>This code will expire in 5 minutes.</p>
+                `;
+
+                try {
+                    await sendEmail(
+                        user.email,
+                        "Verify Your IPRChain Account",
+                        `Your OTP is ${otpCode}`,
+                        message
+                    );
+                } catch (e) {
+                    console.error("Failed to automatically send OTP during login block:", e);
+                }
+
+                return res.status(403).json({ 
+                    message: "Account not verified", 
+                    requiresVerification: true, 
+                    email: user.email, 
+                    username: user.username 
+                });
+            }
         }
 
         const token = jwt.sign(
@@ -374,5 +418,66 @@ exports.testEmail = async (req, res) => {
             code: error.code,
             command: error.command
         });
+    }
+};
+
+// Verify Login OTP for Retroactive Verification
+exports.verifyLogin = async (req, res) => {
+    try {
+        const { email, otp } = req.body;
+        const User = mongoose.model("User");
+        const OTP = mongoose.model("OTP");
+
+        if (!otp || !email) {
+            return res.status(400).json({ message: "Email and Verification code are required." });
+        }
+
+        // Verify the OTP
+        const otpRecord = await OTP.findOne({ email });
+        if (!otpRecord) {
+            return res.status(400).json({ message: "Verification code has expired or was not requested." });
+        }
+
+        if (otpRecord.otp !== otp) {
+            return res.status(400).json({ message: "Invalid verification code." });
+        }
+
+        // Find user and update isVerified
+        const user = await User.findOneAndUpdate(
+            { email },
+            { isVerified: true },
+            { new: true }
+        );
+
+        if (!user) {
+            return res.status(404).json({ message: "User not found." });
+        }
+
+        // Generate token and log them in
+        const token = jwt.sign(
+            { id: user._id, role: user.role, name: user.name, username: user.username, email: user.email, avatarUrl: user.avatarUrl },
+            process.env.JWT_SECRET,
+            { expiresIn: "1d" }
+        );
+
+        // Delete the OTP record
+        await OTP.deleteOne({ email });
+
+        res.status(200).json({
+            message: "Email verified and login successful",
+            token,
+            user: {
+                id: user._id,
+                name: user.name,
+                username: user.username,
+                email: user.email,
+                walletAddress: user.walletAddress,
+                role: user.role,
+                avatarUrl: user.avatarUrl
+            }
+        });
+
+    } catch (error) {
+        res.status(500).json({ error: error.message });
     }
 };
