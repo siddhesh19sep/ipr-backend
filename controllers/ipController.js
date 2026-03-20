@@ -1,4 +1,5 @@
 const IP = require("../models/IP");
+const User = require("../models/User");
 const Alert = require("../models/Alert");
 const Transaction = require("../models/Transaction");
 const SystemSettings = require("../models/SystemSettings");
@@ -51,7 +52,44 @@ exports.createIP = async (req, res) => {
             category,
             registrationCost,
             expirationDate,
-            status: 'Pending' // Requires Admin Verification to be minted on Blockchain
+            status: 'Pending'
+        });
+
+        // 1. Record the Registration Fee DEBIT for the User
+        await Transaction.create({
+            txId: `FE-REG-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+            asset: newIP._id,
+            assetTitle: newIP.title,
+            type: "Registration Fee",
+            amount: -registrationCost, // Negative for debit
+            status: "Completed",
+            recipient: req.user.id
+        });
+
+        // 2. Record the Platform Income CREDIT for the Admin
+        const adminUser = await User.findOne({ role: 'Admin' });
+        
+        if (adminUser) {
+            await Transaction.create({
+                txId: `IN-REG-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+                asset: newIP._id,
+                assetTitle: newIP.title,
+                type: "Platform Income",
+                amount: registrationCost,
+                status: "Credited",
+                recipient: adminUser._id
+            });
+        }
+
+        // 3. Record the INITIAL VALUATION CREDIT for the User (Mock Reward)
+        await Transaction.create({
+            txId: `VAL-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+            asset: newIP._id,
+            assetTitle: newIP.title,
+            type: "Usage Royalty", // Use existing type so it shows in graph/balance easily
+            amount: 5000, 
+            status: "Credited",
+            recipient: req.user.id
         });
 
         res.status(201).json({

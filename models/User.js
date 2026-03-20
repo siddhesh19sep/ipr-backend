@@ -38,7 +38,13 @@ const userSchema = new mongoose.Schema({
         default: ""
     },
     resetPasswordToken: String,
-    resetPasswordExpires: Date
+    resetPasswordExpires: Date,
+    bankDetails: {
+        accountNumber: { type: String, default: "" },
+        ifsc: { type: String, default: "" },
+        bankName: { type: String, default: "" },
+        holderName: { type: String, default: "" }
+    }
 }, { timestamps: true });
 
 module.exports = mongoose.model("User", userSchema);

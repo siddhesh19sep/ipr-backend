@@ -9,15 +9,15 @@ const transactionSchema = new mongoose.Schema({
     asset: {
         type: mongoose.Schema.Types.ObjectId,
         ref: "IP",
-        required: true
+        required: function() { return this.type !== "Payout"; } // Not required for payouts
     },
     assetTitle: {
         type: String,
-        required: true
+        required: function() { return this.type !== "Payout"; } // Not required for payouts
     },
     type: {
         type: String,
-        enum: ["License Fee", "Usage Royalty"],
+        enum: ["License Fee", "Usage Royalty", "Payout", "Registration Fee", "Platform Income"],
         required: true
     },
     amount: {
@@ -26,7 +26,7 @@ const transactionSchema = new mongoose.Schema({
     },
     status: {
         type: String,
-        enum: ["Credited", "Pending"],
+        enum: ["Credited", "Pending", "Processing", "Completed", "Failed"],
         default: "Credited"
     },
     licenseId: {

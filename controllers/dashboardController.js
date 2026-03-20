@@ -12,9 +12,20 @@ exports.getAdminStats = async (req, res) => {
         const approvedIPs = await IP.countDocuments({ status: 'Approved' });
         const openDisputes = await Dispute.countDocuments({ status: 'Open' });
 
-        // Calculate total royalties
+        // Calculate revenue breakdown (Summing Admin's actual income)
         const transactions = await Transaction.find();
-        const totalRoyalty = transactions.reduce((acc, tx) => acc + tx.amount, 0);
+        
+        // Royalty revenue for the platform (optional, if platform takes cut - for now all license/usage royalties)
+        const royaltyRevenue = transactions
+            .filter(t => ["License Fee", "Usage Royalty"].includes(t.type) && t.amount > 0)
+            .reduce((acc, tx) => acc + tx.amount, 0);
+            
+        // Registration revenue (Platform Income specifically for Admin)
+        const registrationRevenue = transactions
+            .filter(t => t.type === "Platform Income")
+            .reduce((acc, tx) => acc + tx.amount, 0);
+
+        const totalRevenue = registrationRevenue + royaltyRevenue;
 
         // Aggregate IP Categories
         const categoriesAggregation = await IP.aggregate([
@@ -26,13 +37,54 @@ exports.getAdminStats = async (req, res) => {
             value: c.count
         }));
 
+        // Monthly Registrations Trend (Last 6 Months)
+        const sixMonthsAgo = new Date();
+        sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 5);
+        
+        const registrationsTrend = await IP.aggregate([
+            { $match: { createdAt: { $gte: sixMonthsAgo } } },
+            { $group: { 
+                _id: { month: { $month: "$createdAt" }, year: { $year: "$createdAt" } },
+                count: { $sum: 1 }
+            }},
+            { $sort: { "_id.year": 1, "_id.month": 1 } }
+        ]);
+
+        const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+        const registrationsData = registrationsTrend.map(r => ({
+            month: months[r._id.month - 1],
+            count: r.count
+        }));
+
+        // Monthly Revenue Trend (Last 6 Months)
+        const revenueTrend = await Transaction.aggregate([
+            { $match: { 
+                type: "Platform Income",
+                createdAt: { $gte: sixMonthsAgo }
+            }},
+            { $group: { 
+                _id: { month: { $month: "$createdAt" }, year: { $year: "$createdAt" } },
+                amount: { $sum: "$amount" }
+            }},
+            { $sort: { "_id.year": 1, "_id.month": 1 } }
+        ]);
+
+        const revenueData = revenueTrend.map(r => ({
+            month: months[r._id.month - 1],
+            amount: r.amount
+        }));
+
         res.status(200).json({
             stats: {
                 totalRegistrations: totalIPs,
                 pendingApprovals: pendingIPs,
                 activeLicenses: approvedIPs,
                 disputesRaised: openDisputes,
-                totalRoyalty
+                royaltyRevenue,
+                registrationRevenue,
+                totalRevenue,
+                registrationsTrend: registrationsData,
+                revenueTrend: revenueData
             },
             categories
         });
@@ -67,13 +119,38 @@ exports.getCreatorStats = async (req, res) => {
             .sort({ createdAt: -1 })
             .limit(5);
 
+        // Monthly Income Trend (Last 6 Months)
+        const sixMonthsAgo = new Date();
+        sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 5);
+        
+        const incomeTrend = await Transaction.aggregate([
+            { $match: { 
+                recipient: new mongoose.Types.ObjectId(userId),
+                createdAt: { $gte: sixMonthsAgo },
+                status: { $in: ["Credited", "Completed"] },
+                amount: { $gt: 0 }
+            }},
+            { $group: { 
+                _id: { month: { $month: "$createdAt" }, year: { $year: "$createdAt" } },
+                amount: { $sum: "$amount" }
+            }},
+            { $sort: { "_id.year": 1, "_id.month": 1 } }
+        ]);
+
+        const monthsLabels = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+        const royaltyTrend = incomeTrend.map(r => ({
+            month: monthsLabels[r._id.month - 1],
+            amount: r.amount
+        }));
+
         res.status(200).json({
             stats: {
                 totalAssets: myIPs.length,
                 pendingApprovals: pendingIPs,
                 activeLicenses: approvedIPs,
                 openDisputes,
-                totalRoyalty
+                totalRoyalty,
+                royaltyTrend
             },
             recentAssets: myIPs.slice(0, 5),
             recentTransactions
