@@ -179,16 +179,13 @@ exports.login = async (req, res) => {
                     <p>This code will expire in 5 minutes.</p>
                 `;
 
-                try {
-                    await sendEmail(
-                        user.email,
-                        "Verify Your IPRChain Account",
-                        `Your OTP is ${otpCode}`,
-                        message
-                    );
-                } catch (e) {
-                    console.error("Failed to automatically send OTP during login block:", e);
-                }
+                // Fire and forget email dispatch so the UI loads instantly
+                sendEmail(
+                    user.email,
+                    "Verify Your IPRChain Account",
+                    `Your OTP is ${otpCode}`,
+                    message
+                ).catch(e => console.error("Failed to background-send OTP during login:", e));
 
                 return res.status(403).json({ 
                     message: "Account not verified", 
