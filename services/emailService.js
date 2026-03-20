@@ -23,7 +23,10 @@ const initializeTransporter = async () => {
         transporterStatus.user = process.env.EMAIL_USER.replace(/(.{3}).*(@.*)/, "$1***$2"); // Mask email
 
         transporter = nodemailer.createTransport({
-            service: process.env.EMAIL_SERVICE || 'gmail',
+            host: 'smtp.gmail.com',
+            port: 587,
+            secure: false, // upgrade later with STARTTLS
+            requireTLS: true,
             auth: {
                 user: process.env.EMAIL_USER,
                 pass: process.env.EMAIL_PASS

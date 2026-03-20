@@ -10,7 +10,7 @@ async function checkLiveEmail() {
         console.log("Data:", response.data);
     } catch (error) {
         if (error.response) {
-            console.error("Diagnostic Failed. Backing says:", error.response.data);
+            console.error("Diagnostic Failed. Backend says:", JSON.stringify(error.response.data, null, 2));
         } else {
             console.error("Error connecting:", error.message);
         }
