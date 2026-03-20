@@ -9,18 +9,28 @@ const { sendEmail, getServiceStatus } = require("../services/emailService");
 // Send OTP for Registration
 exports.sendOtp = async (req, res) => {
     try {
-        const { email, username } = req.body;
+        const { email, username, isLogin } = req.body;
         const User = mongoose.model("User");
         const OTP = mongoose.model("OTP");
 
-        if (!email || !username) {
-            return res.status(400).json({ message: "Email and username are required." });
+        if (!email) {
+            return res.status(400).json({ message: "Email is required." });
         }
 
-        // Check if user already exists
-        const existingUser = await User.findOne({ $or: [{ email }, { username }] });
-        if (existingUser) {
-            return res.status(400).json({ message: "An account with this email or username already exists." });
+        if (!isLogin) {
+            if (!username) return res.status(400).json({ message: "Email and username are required for registration." });
+            
+            // Registration Flow: Check if user already exists
+            const existingUser = await User.findOne({ $or: [{ email }, { username }] });
+            if (existingUser) {
+                return res.status(400).json({ message: "An account with this email or username already exists." });
+            }
+        } else {
+            // Login Flow: Ensure user actually exists
+            const existingUser = await User.findOne({ email });
+            if (!existingUser) {
+                return res.status(404).json({ message: "No account found with this email." });
+            }
         }
 
         // Generate a 6-digit OTP
