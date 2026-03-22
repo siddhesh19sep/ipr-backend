@@ -13,6 +13,7 @@ const stringSimilarity = require("string-similarity");
 exports.createIP = async (req, res) => {
     try {
         const { title, description, category, fileContent, validityPeriod } = req.body;
+        console.log(`Create IP Request - Title: ${title}, FileContent Size: ${fileContent?.length || 0}`);
 
         if (!title || !description || !fileContent || !validityPeriod) {
             return res.status(400).json({ message: "Title, description, file content, and validity period are required" });
@@ -44,16 +45,37 @@ exports.createIP = async (req, res) => {
         const expirationDate = new Date();
         expirationDate.setFullYear(expirationDate.getFullYear() + yearsValid);
 
+        // NEW: Upload fileContent to GridFS
+        let fileId = null;
+        if (fileContent) {
+            const readableStream = new (require('stream').Readable)();
+            readableStream.push(fileContent);
+            readableStream.push(null);
+            
+            const uploadStream = global.gridFsBucket.openUploadStream(`${title}_document`);
+            fileId = uploadStream.id;
+            readableStream.pipe(uploadStream);
+            
+            await new Promise((resolve, reject) => {
+                uploadStream.on('finish', resolve);
+                uploadStream.on('error', reject);
+            });
+        }
+
         const newIP = await IP.create({
             title,
             description,
             owner: req.user.id,
             fileHash: ipfsHash,
+            fileData: fileContent.length < 10000000 ? fileContent : "LARGE_FILE_STORED_IN_GRIDFS", // Keep small files for speed, reference large ones
+            gridFsId: fileId, // Store the GridFS reference
             category,
             registrationCost,
             expirationDate,
             status: 'Pending'
         });
+
+        console.log(`IP Created (GridFS) - _id: ${newIP._id}, FileSize: ${fileContent.length}`);
 
         // 1. Record the Registration Fee DEBIT for the User
         await Transaction.create({
@@ -104,15 +126,10 @@ exports.createIP = async (req, res) => {
 // Get All IPs (Secured by Role)
 exports.getAllIPs = async (req, res) => {
     try {
-        const { search } = req.query;
+        const { search, category } = req.query;
         let query = {};
 
-        // If the user is NOT an Admin or Verifier, restrict to only their own IPs
-        if (req.user.role !== 'Admin' && req.user.role !== 'Verifier') {
-            query = { owner: req.user.id };
-        }
-
-        // Add search filter if provided
+        // Search options
         if (search) {
             query.$or = [
                 { title: { $regex: search, $options: 'i' } },
@@ -120,21 +137,91 @@ exports.getAllIPs = async (req, res) => {
             ];
         }
 
-        const ips = await IP.find(query).populate("owner", "name email walletAddress");
+        if (category) {
+            query.category = category;
+        }
+
+        // Return all IPs but EXCLUDE fileData for performance and privacy in the list
+        const ips = await IP.find(query)
+            .select("-fileData") 
+            .populate("owner", "name email walletAddress")
+            .sort({ createdAt: -1 });
+
         res.status(200).json(ips);
+    } catch (error) {
+        console.error("Error in getAllIPs:", error);
+        res.status(500).json({ error: error.message });
+    }
+};
+
+// Get Single IP Detail (Protected access to fileData)
+exports.getIPById = async (req, res) => {
+    try {
+        const ip = await IP.findById(req.params.id)
+            .select("-fileData")
+            .populate("owner", "name email walletAddress");
+            
+        if (!ip) {
+            return res.status(404).json({ message: "IP record not found" });
+        }
+
+        // Security check for fileData: 
+        // Only return it if: User is Admin, User is Owner, OR IP is Available for License
+        const userRole = req.user?.role?.toLowerCase();
+        const isAdmin = userRole === 'admin' || userRole === 'verifier';
+        const isOwner = ip.owner._id.equals(req.user?.id || req.user?._id);
+        const isPubliclyAvailable = ip.isAvailableForLicense === true || ip.status === 'Approved';
+
+        if (!isAdmin && !isOwner && !isPubliclyAvailable) {
+            // If not authorized to see the full content, hide fileData
+            const sanitizedIP = ip.toObject();
+            delete sanitizedIP.fileData;
+            return res.status(200).json(sanitizedIP);
+        }
+
+        res.status(200).json(ip);
     } catch (error) {
         res.status(500).json({ error: error.message });
     }
 };
 
-// Get Single IP
-exports.getIPById = async (req, res) => {
+// Get only the file data (lazy load)
+exports.getIPFile = async (req, res) => {
     try {
-        const ip = await IP.findById(req.params.id).populate("owner", "name email walletAddress");
+        const ip = await IP.findById(req.params.id).select("fileData gridFsId owner isAvailableForLicense status");
+        
         if (!ip) {
-            return res.status(404).json({ message: "IP not found" });
+            return res.status(404).json({ message: "IP record not found" });
         }
-        res.status(200).json(ip);
+
+        // Security check
+        const userRole = req.user?.role?.toLowerCase();
+        const isAdmin = userRole === 'admin' || userRole === 'verifier';
+        const isOwner = ip.owner._id ? ip.owner._id.equals(req.user?.id) : ip.owner.equals(req.user?.id);
+        const isPubliclyAvailable = ip.isAvailableForLicense === true || ip.status === 'Approved';
+
+        if (!isAdmin && !isOwner && !isPubliclyAvailable) {
+            return res.status(403).json({ message: "Not authorized to access file content" });
+        }
+
+        // If it's in GridFS, fetch it
+        if (ip.gridFsId && global.gridFsBucket) {
+            console.log(`Fetching large file from GridFS: ${ip.gridFsId}`);
+            const downloadStream = global.gridFsBucket.openDownloadStream(ip.gridFsId);
+            let fileData = '';
+            
+            await new Promise((resolve, reject) => {
+                downloadStream.on('data', (chunk) => {
+                    fileData += chunk.toString();
+                });
+                downloadStream.on('end', resolve);
+                downloadStream.on('error', reject);
+            });
+            
+            return res.status(200).json({ fileData });
+        }
+
+        res.status(200).json({ fileData: ip.fileData });
     } catch (error) {
         res.status(500).json({ error: error.message });
     }
@@ -143,7 +230,7 @@ exports.getIPById = async (req, res) => {
 // Update IP
 exports.updateIP = async (req, res) => {
     try {
-        const { title, description, category, status, isAvailableForLicense, licensePrice, licenseType } = req.body;
+        const { title, description, category, status, isAvailableForLicense, licensePrice, licenseType, fileContent } = req.body;
 
         const ip = await IP.findById(req.params.id).populate("owner");
         if (!ip) {
@@ -151,10 +238,13 @@ exports.updateIP = async (req, res) => {
         }
 
         // Check ownership or admin role
-        const isAdmin = req.user.role === 'Admin' || req.user.role === 'Verifier';
-        const isOwner = ip.owner._id.toString() === req.user.id;
+        const isAdmin = req.user.role?.toLowerCase() === 'admin' || req.user.role?.toLowerCase() === 'verifier';
+        const isOwner = ip.owner._id.equals(req.user.id || req.user._id);
+
+        console.log(`Update Request - User: ${req.user.id}, Role: ${req.user.role}, IsAdmin: ${isAdmin}, IsOwner: ${isOwner}`);
 
         if (!isOwner && !isAdmin) {
+            console.error("Authorization failed for updateIP");
             return res.status(403).json({ message: "Not authorized to update this IP" });
         }
 
@@ -166,6 +256,34 @@ exports.updateIP = async (req, res) => {
         ip.title = isOwner ? (title || ip.title) : ip.title;
         ip.description = isOwner ? (description || ip.description) : ip.description;
         ip.category = isOwner ? (category || ip.category) : ip.category;
+        
+        // Handle Document Restoration (Large File Upload via GridFS + Hash Update)
+        if (isOwner && fileContent) {
+            let fileId = null;
+            const readableStream = new (require('stream').Readable)();
+            readableStream.push(fileContent);
+            readableStream.push(null);
+            
+            const uploadStream = global.gridFsBucket.openUploadStream(`${ip.title}_restored`);
+            fileId = uploadStream.id;
+            readableStream.pipe(uploadStream);
+            
+            await new Promise((resolve, reject) => {
+                uploadStream.on('finish', resolve);
+                uploadStream.on('error', reject);
+            });
+
+            ip.gridFsId = fileId;
+            ip.fileData = fileContent.length < 10000000 ? fileContent : "LARGE_FILE_STORED_IN_GRIDFS";
+            
+            // Critical: Remove the QmMock designation so the UI recognizes the restoration
+            if (ip.fileHash && ip.fileHash.startsWith('QmMock')) {
+                ip.fileHash = `QmRestored${crypto.randomBytes(16).toString('hex')}IPFS`;
+            }
+        } else {
+            // Keep old fileData if no new content is provided
+            ip.fileData = ip.fileData;
+        }
         
         // Licensing Updates
         if (isOwner) {

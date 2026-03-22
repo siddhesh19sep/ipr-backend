@@ -27,12 +27,22 @@ app.use(cors({
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization']
 }));
-app.use(express.json());
+app.use(express.json({ limit: '100mb' }));
+app.use(express.urlencoded({ limit: '100mb', extended: true }));
 app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 
 // Database Connection
+let bucket;
 mongoose.connect(process.env.MONGO_URI)
-    .then(() => console.log("MongoDB Connected"))
+    .then(() => {
+        console.log("MongoDB Connected");
+        const db = mongoose.connection.db;
+        bucket = new mongoose.mongo.GridFSBucket(db, {
+            bucketName: 'ip_documents'
+        });
+        // Make bucket accessible globally for controllers
+        global.gridFsBucket = bucket;
+    })
     .catch(err => console.log(err));
 
 // Ping route for health checks

@@ -54,6 +54,14 @@ const ipSchema = new mongoose.Schema({
         type: String,
         enum: ["Exclusive", "Non-Exclusive", "None"],
         default: "None"
+    },
+    fileData: {
+        type: String, // Base64 or Text content
+        required: false
+    },
+    gridFsId: {
+        type: mongoose.Schema.Types.ObjectId,
+        required: false
     }
 }, { timestamps: true });
 

@@ -31,4 +31,5 @@ router.get("/email-status", getEmailStatus);
 router.put("/profile", authMiddleware, updateProfile);
 router.post("/upload-avatar", authMiddleware, upload.single("avatar"), uploadAvatar);
 
+router.get("/status", authController.getSystemStatus);
 module.exports = router;

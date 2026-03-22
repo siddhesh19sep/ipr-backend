@@ -15,9 +15,9 @@ exports.getAdminStats = async (req, res) => {
         // Calculate revenue breakdown (Summing Admin's actual income)
         const transactions = await Transaction.find();
         
-        // Royalty revenue for the platform (optional, if platform takes cut - for now all license/usage royalties)
+        // Royalty revenue for the platform (optional) - Exclude legacy mock credits (5000)
         const royaltyRevenue = transactions
-            .filter(t => ["License Fee", "Usage Royalty"].includes(t.type) && t.amount > 0)
+            .filter(t => ["License Fee", "Usage Royalty"].includes(t.type) && t.amount > 0 && t.amount !== 5000)
             .reduce((acc, tx) => acc + tx.amount, 0);
             
         // Registration revenue (Platform Income specifically for Admin)
@@ -98,7 +98,7 @@ exports.getCreatorStats = async (req, res) => {
     try {
         const userId = req.user.id;
 
-        const myIPs = await IP.find({ owner: userId }).sort({ createdAt: -1 });
+        const myIPs = await IP.find({ owner: userId }).select("-fileData").sort({ createdAt: -1 });
         const pendingIPs = myIPs.filter(ip => ip.status === 'Pending').length;
         const approvedIPs = myIPs.filter(ip => ip.status === 'Approved').length;
 
@@ -112,7 +112,18 @@ exports.getCreatorStats = async (req, res) => {
 
         // Transactions where they are the recipient
         const transactions = await Transaction.find({ recipient: userId });
-        const totalRoyalty = transactions.reduce((acc, tx) => acc + tx.amount, 0);
+        
+        // Calculate REAL Earnings (License Fees + Usage Royalties, excluding mock 5000 credits)
+        const totalEarnings = transactions
+            .filter(t => ["License Fee", "Usage Royalty"].includes(t.type) && t.amount > 0 && t.amount !== 5000)
+            .reduce((acc, tx) => acc + tx.amount, 0);
+
+        // Calculate Portfolio Valuation (Sum of mock 5000 credits)
+        const portfolioValuation = transactions
+            .filter(t => t.type === "Usage Royalty" && t.amount === 5000)
+            .reduce((acc, tx) => acc + tx.amount, 0);
+
+        const netBalance = transactions.reduce((acc, tx) => acc + tx.amount, 0);
 
         // Recent License Transactions
         const recentTransactions = await Transaction.find({ recipient: userId })
@@ -128,7 +139,7 @@ exports.getCreatorStats = async (req, res) => {
                 recipient: new mongoose.Types.ObjectId(userId),
                 createdAt: { $gte: sixMonthsAgo },
                 status: { $in: ["Credited", "Completed"] },
-                amount: { $gt: 0 }
+                amount: { $gt: 0, $ne: 5000 } // Exclude legacy mock credits
             }},
             { $group: { 
                 _id: { month: { $month: "$createdAt" }, year: { $year: "$createdAt" } },
@@ -149,7 +160,9 @@ exports.getCreatorStats = async (req, res) => {
                 pendingApprovals: pendingIPs,
                 activeLicenses: approvedIPs,
                 openDisputes,
-                totalRoyalty,
+                totalRoyalty: totalEarnings, // Real earnings
+                portfolioValuation,         // Initial valuation credits
+                netBalance,
                 royaltyTrend
             },
             recentAssets: myIPs.slice(0, 5),

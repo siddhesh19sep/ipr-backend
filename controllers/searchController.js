@@ -22,9 +22,31 @@ exports.globalSearch = async (req, res) => {
             ]
         };
 
-        // If not Admin/Verifier, only show their own IPs
+        // If not Admin/Verifier, show their own IPs OR any Approved IPs
         if (req.user.role !== 'Admin' && req.user.role !== 'Verifier') {
-            ipQuery.owner = req.user.id;
+            ipQuery.$or = [
+                { owner: req.user.id },
+                { status: 'Approved' }
+            ];
+            // Since we're adding to the $or, remove the previous title/description $or
+            // to combine them correctly or just add the condition.
+            // Let's restructure properly:
+            ipQuery = {
+                $and: [
+                    {
+                        $or: [
+                            { title: searchRegex },
+                            { description: searchRegex }
+                        ]
+                    },
+                    {
+                        $or: [
+                            { owner: req.user.id },
+                            { status: 'Approved' }
+                        ]
+                    }
+                ]
+            };
         }
 
         const ips = await IP.find(ipQuery)
