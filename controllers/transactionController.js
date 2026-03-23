@@ -13,6 +13,18 @@ exports.getUserTransactions = async (req, res) => {
     }
 };
 
+// Get all transactions across the entire platform (Admin Only)
+exports.getAdminTransactions = async (req, res) => {
+    try {
+        const transactions = await Transaction.find()
+            .sort({ createdAt: -1 });
+
+        res.status(200).json(transactions);
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+};
+
 // Create a new mock transaction (For demonstration/testing purposes)
 exports.createTransaction = async (req, res) => {
     try {
