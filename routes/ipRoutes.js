@@ -2,7 +2,9 @@ const express = require("express");
 const router = express.Router();
 const authMiddleware = require("../middleware/authMiddleware");
 const roleMiddleware = require("../middleware/roleMiddleware");
-const { createIP, getAllIPs, getIPById, updateIP, deleteIP, scanIP, verifyPublicIP, renewIP, checkExpiringAssets, transferIP, getIPFile } = require("../controllers/ipController");
+const mongoose = require("mongoose");
+const IP = require("../models/IP");
+const { createIP, getAllIPs, getIPById, updateIP, deleteIP, scanIP, verifyPublicIP, renewIP, checkExpiringAssets, transferIP, getIPFile, getDiagnostics } = require("../controllers/ipController");
 
 // Public routes
 router.get("/public/verify/:hash", verifyPublicIP);
@@ -19,6 +21,7 @@ router.put("/:id", updateIP);
 router.put("/:id/renew", renewIP);
 router.put("/:id/transfer", transferIP);
 router.post("/check-expirations", checkExpiringAssets);
+router.get("/diagnostics", getDiagnostics);
 router.delete("/:id", deleteIP);
 
 module.exports = router;

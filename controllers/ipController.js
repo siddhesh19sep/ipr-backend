@@ -1,4 +1,5 @@
 const IP = require("../models/IP");
+const mongoose = require("mongoose");
 const User = require("../models/User");
 const Alert = require("../models/Alert");
 const Transaction = require("../models/Transaction");
@@ -208,6 +209,15 @@ exports.getIPById = async (req, res) => {
     } catch (error) {
         res.status(500).json({ error: error.message });
     }
+};
+
+exports.getDiagnostics = async (req, res) => {
+    res.status(200).json({
+        version: "1.1.0-GridFS-Patch",
+        serverTime: new Date().toISOString(),
+        gridFsReady: !!global.gridFsBucket,
+        dbName: mongoose.connection.db?.databaseName
+    });
 };
 
 // Get only the file data (lazy load)
