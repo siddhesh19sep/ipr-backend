@@ -2,7 +2,7 @@ const express = require("express");
 const router = express.Router();
 const authMiddleware = require("../middleware/authMiddleware");
 const roleMiddleware = require("../middleware/roleMiddleware");
-const { createIP, getAllIPs, getIPById, updateIP, deleteIP, scanIP, verifyPublicIP, renewIP, checkExpiringAssets, transferIP } = require("../controllers/ipController");
+const { createIP, getAllIPs, getIPById, updateIP, deleteIP, scanIP, verifyPublicIP, renewIP, checkExpiringAssets, transferIP, getIPFile } = require("../controllers/ipController");
 
 // Public routes
 router.get("/public/verify/:hash", verifyPublicIP);
