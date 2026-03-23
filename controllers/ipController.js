@@ -141,6 +141,24 @@ exports.getAllIPs = async (req, res) => {
             query.category = category;
         }
 
+        if (req.query.marketplace === 'true') {
+            query.status = "Approved";
+            query.$or = [
+                { isAvailableForLicense: true, ...(query.$or ? { $and: [{ $or: query.$or }] } : {}) },
+                { isAvailableForTransfer: true, ...(query.$or ? { $and: [{ $or: query.$or }] } : {}) }
+            ];
+            // Simplification for the OR query combining with Search:
+            if (search) {
+                query.$and = [
+                    { $or: [{ title: { $regex: search, $options: 'i' } }, { description: { $regex: search, $options: 'i' } }] },
+                    { $or: [{ isAvailableForLicense: true }, { isAvailableForTransfer: true }] }
+                ];
+                delete query.$or;
+            } else {
+                query.$or = [{ isAvailableForLicense: true }, { isAvailableForTransfer: true }];
+            }
+        }
+
         // Return all IPs but EXCLUDE fileData for performance and privacy in the list
         const ips = await IP.find(query)
             .select("-fileData") 
@@ -165,14 +183,21 @@ exports.getIPById = async (req, res) => {
             return res.status(404).json({ message: "IP record not found" });
         }
 
-        // Security check for fileData: 
-        // Only return it if: User is Admin, User is Owner, OR IP is Available for License
+        // Only return fileData if: User is Admin, User is Owner, OR User holds an active License
         const userRole = req.user?.role?.toLowerCase();
         const isAdmin = userRole === 'admin' || userRole === 'verifier';
         const isOwner = ip.owner._id.equals(req.user?.id || req.user?._id);
-        const isPubliclyAvailable = ip.isAvailableForLicense === true || ip.status === 'Approved';
+        
+        let hasLicense = false;
+        try {
+            const License = mongoose.model("License");
+            const licenseDoc = await License.findOne({ ip: ip._id, licensee: req.user?.id || req.user?._id, status: "Active" });
+            hasLicense = !!licenseDoc;
+        } catch (e) {
+            console.error("License check error:", e);
+        }
 
-        if (!isAdmin && !isOwner && !isPubliclyAvailable) {
+        if (!isAdmin && !isOwner && !hasLicense) {
             // If not authorized to see the full content, hide fileData
             const sanitizedIP = ip.toObject();
             delete sanitizedIP.fileData;
@@ -197,10 +222,18 @@ exports.getIPFile = async (req, res) => {
         // Security check
         const userRole = req.user?.role?.toLowerCase();
         const isAdmin = userRole === 'admin' || userRole === 'verifier';
-        const isOwner = ip.owner._id ? ip.owner._id.equals(req.user?.id) : ip.owner.equals(req.user?.id);
-        const isPubliclyAvailable = ip.isAvailableForLicense === true || ip.status === 'Approved';
+        const isOwner = ip.owner._id ? ip.owner._id.equals(req.user?.id || req.user?._id) : ip.owner.equals(req.user?.id || req.user?._id);
+        
+        let hasLicense = false;
+        try {
+            const License = mongoose.model("License");
+            const licenseDoc = await License.findOne({ ip: ip._id, licensee: req.user?.id || req.user?._id, status: "Active" });
+            hasLicense = !!licenseDoc;
+        } catch (e) {
+            console.error("License check error:", e);
+        }
 
-        if (!isAdmin && !isOwner && !isPubliclyAvailable) {
+        if (!isAdmin && !isOwner && !hasLicense) {
             return res.status(403).json({ message: "Not authorized to access file content" });
         }
 
