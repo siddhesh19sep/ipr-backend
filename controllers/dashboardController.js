@@ -74,6 +74,11 @@ exports.getAdminStats = async (req, res) => {
             amount: r.amount
         }));
 
+        // Recent Platform Transactions
+        const recentTransactions = await Transaction.find()
+            .sort({ createdAt: -1 })
+            .limit(10);
+
         res.status(200).json({
             stats: {
                 totalRegistrations: totalIPs,
@@ -86,7 +91,8 @@ exports.getAdminStats = async (req, res) => {
                 registrationsTrend: registrationsData,
                 revenueTrend: revenueData
             },
-            categories
+            categories,
+            recentTransactions
         });
     } catch (error) {
         res.status(500).json({ error: error.message });
