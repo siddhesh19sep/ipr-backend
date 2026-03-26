@@ -61,13 +61,15 @@ exports.sendOtp = async (req, res) => {
         if (emailResult && emailResult.mock) {
             return res.status(200).json({ 
                 message: "A verification code has been generated. (DEVELOPER MODE: If you didn't receive an email, check the backend console/terminal for your code)",
-                isMock: true
+                isMock: true,
+                otp: (process.env.NODE_ENV === 'development' || process.env.DEMO_MODE === 'true') ? otpCode : undefined
             });
         }
 
         res.status(200).json({ 
             message: "Verification code sent to your email.",
-            provider: emailResult.provider || "Resend"
+            provider: emailResult.provider || "Resend",
+            otp: (process.env.NODE_ENV === 'development' || process.env.DEMO_MODE === 'true') ? otpCode : undefined
         });
 
     } catch (error) {
@@ -211,7 +213,8 @@ exports.login = async (req, res) => {
                     message: "Account not verified", 
                     requiresVerification: true, 
                     email: user.email, 
-                    username: user.username 
+                    username: user.username,
+                    otp: (process.env.NODE_ENV === 'development' || process.env.DEMO_MODE === 'true') ? otpCode : undefined
                 });
             }
         }
