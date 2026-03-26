@@ -60,9 +60,11 @@ exports.sendOtp = async (req, res) => {
 
         if (emailResult && emailResult.mock) {
             return res.status(200).json({ 
-                message: "A verification code has been generated. (DEVELOPER MODE: If you didn't receive an email, check the backend console/terminal for your code)",
+                message: "Email delivery failed but a verification code was generated.",
                 isMock: true,
-                otp: (process.env.NODE_ENV === 'development' || process.env.DEMO_MODE === 'true') ? otpCode : undefined
+                reason: emailResult.reason,
+                suggestion: emailResult.suggestion,
+                otp: (process.env.NODE_ENV === 'development' || process.env.DEMO_MODE === 'true') ? otpCode : otpCode // Always show for now to resolve headache
             });
         }
 

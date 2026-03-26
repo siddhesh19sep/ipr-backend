@@ -89,17 +89,28 @@ exports.sendEmail = async (to, subject, text, html = "") => {
             console.warn("[RESEND API] REASON: Key is Sandbox mode. ONLY verified emails work.");
         }
 
-        // 3. MOCK FALLBACK (Only for development)
-        console.log("\n--- [DEVELOPER MOCK EMAIL] ---");
+        // 3. MOCK FALLBACK (Only for development or clear infrastructure failure)
+        let failureReason = "SMTP_BLOCKED_OR_SANDBOX_RESTRICTION";
+        let suggestion = "If using Resend Sandbox, you must verify the recipient email in the Resend Dashboard.";
+        
+        if (status === 422) {
+            failureReason = "RESEND_SANDBOX_UNVERIFIED_RECIPIENT";
+            suggestion = "Resend Sandbox only sends to verified emails. Please verify this email at resend.com/emails or use your own account email.";
+        }
+
+        console.log("\n--- [DELIVERY FAILURE DIAGNOSTIC] ---");
         console.log(`To: ${to}`);
-        console.log(`OTP Content: ${text}`);
-        console.log("------------------------------\n");
+        console.log(`Error: ${resendError.message}`);
+        console.log(`Suggestion: ${suggestion}`);
+        console.log("------------------------------------\n");
         
         return { 
             mock: true, 
-            id: "mock_" + Date.now(),
-            reason: "ALL_PROVIDERS_FAILED",
-            error: resendError.message
+            id: "fail_" + Date.now(),
+            reason: failureReason,
+            suggestion: suggestion,
+            error: resendError.message,
+            resendStatus: status
         };
     }
 };
