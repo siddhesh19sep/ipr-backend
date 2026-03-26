@@ -29,9 +29,11 @@ if (GMAIL_USER && GMAIL_PASS) {
             pass: GMAIL_PASS,
         },
         tls: {
-            // Do not fail on invalid certs (common on some cloud relays)
             rejectUnauthorized: false
-        }
+        },
+        connectionTimeout: 10000, // 10 seconds
+        greetingTimeout: 10000,
+        socketTimeout: 10000
     });
 }
 
@@ -72,7 +74,8 @@ exports.sendEmail = async (to, subject, text, html = "") => {
             headers: {
                 'Authorization': `Bearer ${RESEND_API_KEY}`,
                 'Content-Type': 'application/json'
-            }
+            },
+            timeout: 10000 // 10 seconds
         });
 
         console.log(`[RESEND API] Sent email to ${to} | ID:`, response.data.id);
