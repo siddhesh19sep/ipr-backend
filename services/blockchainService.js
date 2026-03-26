@@ -20,21 +20,34 @@ const contractAddress = process.env.SMART_CONTRACT_ADDRESS;
 
 class BlockchainService {
     constructor() {
+        this.isSimulated = true; // Default to simulation until initialized
+        this.initialize();
+    }
+
+    async initialize() {
         if (!privateKey || !contractAddress) {
             console.warn("Blockchain private key or contract address not provided. Enabling simulation mode.");
-            this.isSimulated = true;
             return;
         }
 
         try {
             this.provider = new ethers.JsonRpcProvider(rpcUrl);
             this.wallet = new ethers.Wallet(privateKey, this.provider);
+            
+            // Get network info for logging
+            const network = await this.provider.getNetwork();
+            
             // Ensure the address is correctly checksummed for ethers v6
-            const checksummedAddress = ethers.getAddress(contractAddress);
+            const checksummedAddress = ethers.getAddress(contractAddress.toLowerCase());
+            
             this.contract = new ethers.Contract(checksummedAddress, contractABI, this.wallet);
             this.isSimulated = false;
+            console.log("✅ Blockchain Service initialized successfully on network:", network.name || "Polygon Amoy", `(Chain ID: ${network.chainId})`);
         } catch (e) {
-            console.error("Blockchain provider initialization failed. Falling back to simulation mode.");
+            console.error("Blockchain provider initialization failed:", e.message);
+            if (e.reason) console.error("Reason:", e.reason);
+            if (e.code) console.error("Code:", e.code);
+            console.warn("Falling back to simulation mode.");
             this.isSimulated = true;
         }
     }
