@@ -51,14 +51,24 @@ exports.sendOtp = async (req, res) => {
             <p>This code will expire in 5 minutes.</p>
         `;
 
-        await sendEmail(
+        const emailResult = await sendEmail(
             email, 
             "Your IPRChain Verification Code", 
             `Your OTP is ${otpCode}`, 
             message
         );
 
-        res.status(200).json({ message: "Verification code sent to your email." });
+        if (emailResult && emailResult.mock) {
+            return res.status(200).json({ 
+                message: "A verification code has been generated. (DEVELOPER MODE: If you didn't receive an email, check the backend console/terminal for your code)",
+                isMock: true
+            });
+        }
+
+        res.status(200).json({ 
+            message: "Verification code sent to your email.",
+            provider: emailResult.provider || "Resend"
+        });
 
     } catch (error) {
         console.error("Error sending OTP:", error);
@@ -349,13 +359,17 @@ exports.forgotPassword = async (req, res) => {
                      `${resetUrl}\n\n` +
                      `If you did not request this, please ignore this email and your password will remain unchanged.\n`;
         
-        // Don't 'await' here so we can respond to the user immediately
-        sendEmail(user.email, subject, text).catch(err => {
+        // We actually want to know if it was mocked to inform the user
+        const emailResult = await sendEmail(user.email, subject, text).catch(err => {
             console.error(`Background Email Error for ${user.email}:`, err);
+            return { mock: true };
         });
 
         res.status(200).json({ 
-            message: "Recovery email has been dispatched. Please check your inbox shortly.",
+            message: emailResult.mock 
+                ? "Recovery link generated in Developer Mode. Check server logs." 
+                : "Recovery email has been dispatched. Please check your inbox shortly.",
+            isMock: !!emailResult.mock,
             debug: {
                 provider: getServiceStatus().provider,
                 isReady: getServiceStatus().isReady

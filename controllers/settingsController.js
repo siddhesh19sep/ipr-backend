@@ -40,6 +40,9 @@ exports.updatePricingMatrix = async (req, res) => {
             ...pricingMatrix
         };
 
+        // Explicitly mark as modified for Mongoose to detect nested object changes
+        settings.markModified('pricingMatrix');
+
         await settings.save();
 
         res.status(200).json({

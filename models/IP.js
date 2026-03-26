@@ -62,7 +62,21 @@ const ipSchema = new mongoose.Schema({
     gridFsId: {
         type: mongoose.Schema.Types.ObjectId,
         required: false
-    }
+    },
+    creators: [{
+        user: { 
+            type: mongoose.Schema.Types.ObjectId, 
+            ref: "User", 
+            required: true 
+        },
+        share: { 
+            type: Number, 
+            required: true, 
+            min: 0, 
+            max: 100 
+        }
+    }]
 }, { timestamps: true });
+
 
 module.exports = mongoose.model("IP", ipSchema);

@@ -13,7 +13,8 @@ const stringSimilarity = require("string-similarity");
 // Create new IP
 exports.createIP = async (req, res) => {
     try {
-        const { title, description, category, fileContent, validityPeriod } = req.body;
+        const { title, description, category, fileContent, validityPeriod, creators } = req.body;
+
         console.log(`Create IP Request - Title: ${title}, FileContent Size: ${fileContent?.length || 0}`);
 
         if (!title || !description || !fileContent || !validityPeriod) {
@@ -35,13 +36,13 @@ exports.createIP = async (req, res) => {
         const yearsValid = parseInt(validityPeriod, 10);
 
         let settings = await SystemSettings.findOne({ singleton: 'GLOBAL' });
-        let baseCostPerYear = 300; // Default fallback
+        let baseCostPerYear = 100; // Default fallback
 
         if (settings && settings.pricingMatrix && settings.pricingMatrix[category] !== undefined) {
-            baseCostPerYear = settings.pricingMatrix[category];
+            baseCostPerYear = settings.pricingMatrix[category]; 
         }
 
-        const registrationCost = baseCostPerYear * yearsValid;
+        const registrationCost = baseCostPerYear * yearsValid; 
 
         const expirationDate = new Date();
         expirationDate.setFullYear(expirationDate.getFullYear() + yearsValid);
@@ -63,11 +64,35 @@ exports.createIP = async (req, res) => {
             });
         }
 
+        // Handle Co-Creators logic
+        let creatorsList = [];
+        if (creators && Array.isArray(creators) && creators.length > 0) {
+            // Validate creators
+            let totalShare = 0;
+            for (const c of creators) {
+                const creatorUser = await User.findOne({ email: c.email });
+                if (!creatorUser) {
+                    return res.status(404).json({ message: `Co-creator with email ${c.email} not found. Please ensure they are registered.` });
+                }
+                creatorsList.push({ user: creatorUser._id, share: Number(c.share) });
+                totalShare += Number(c.share);
+            }
+
+            if (Math.round(totalShare) !== 100) {
+                return res.status(400).json({ message: `Total creator shares must sum to 100%. Current total: ${totalShare}%` });
+            }
+        } else {
+            // Default to 100% for the primary owner
+            creatorsList = [{ user: req.user.id, share: 100 }];
+        }
+
         const newIP = await IP.create({
             title,
             description,
             owner: req.user.id,
+            creators: creatorsList,
             fileHash: ipfsHash,
+
             fileData: fileContent.length < 10000000 ? fileContent : "LARGE_FILE_STORED_IN_GRIDFS", // Keep small files for speed, reference large ones
             gridFsId: fileId, // Store the GridFS reference
             category,
@@ -78,31 +103,7 @@ exports.createIP = async (req, res) => {
 
         console.log(`IP Created (GridFS) - _id: ${newIP._id}, FileSize: ${fileContent.length}`);
 
-        // 1. Record the Registration Fee DEBIT for the User
-        await Transaction.create({
-            txId: `FE-REG-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
-            asset: newIP._id,
-            assetTitle: newIP.title,
-            type: "Registration Fee",
-            amount: -registrationCost, // Negative for debit
-            status: "Completed",
-            recipient: req.user.id
-        });
-
-        // 2. Record the Platform Income CREDIT for the Admin
-        const adminUser = await User.findOne({ role: 'Admin' });
-        
-        if (adminUser) {
-            await Transaction.create({
-                txId: `IN-REG-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
-                asset: newIP._id,
-                assetTitle: newIP.title,
-                type: "Platform Income",
-                amount: registrationCost,
-                status: "Credited",
-                recipient: adminUser._id
-            });
-        }
+        // Registration is now free of cost. No fee transactions recorded.
 
         // 3. Record the INITIAL VALUATION CREDIT for the User (Mock Reward)
         await Transaction.create({
@@ -178,7 +179,9 @@ exports.getIPById = async (req, res) => {
     try {
         const ip = await IP.findById(req.params.id)
             .select("-fileData")
-            .populate("owner", "name email walletAddress");
+            .populate("owner", "name email walletAddress")
+            .populate("creators.user", "name email walletAddress");
+
             
         if (!ip) {
             return res.status(404).json({ message: "IP record not found" });
@@ -187,7 +190,9 @@ exports.getIPById = async (req, res) => {
         // Only return fileData if: User is Admin, User is Owner, OR User holds an active License
         const userRole = req.user?.role?.toLowerCase();
         const isAdmin = userRole === 'admin' || userRole === 'verifier';
-        const isOwner = ip.owner._id.equals(req.user?.id || req.user?._id);
+        const isOwner = ip.owner._id.equals(req.user?.id || req.user?._id) || 
+                       ip.creators?.some(c => c.user._id.equals(req.user?.id || req.user?._id));
+
         
         let hasLicense = false;
         try {
@@ -198,14 +203,21 @@ exports.getIPById = async (req, res) => {
             console.error("License check error:", e);
         }
 
+        // Do a fast query to see if fileData or gridFsId truly exists behind the scenes
+        const fileCheck = await IP.findById(req.params.id).select("fileData gridFsId");
+        const hasLegacyFile = !!(fileCheck && fileCheck.fileData && fileCheck.fileData !== "LARGE_FILE_STORED_IN_GRIDFS");
+
         if (!isAdmin && !isOwner && !hasLicense) {
             // If not authorized to see the full content, hide fileData
             const sanitizedIP = ip.toObject();
             delete sanitizedIP.fileData;
+            sanitizedIP.hasLegacyFile = hasLegacyFile;
             return res.status(200).json(sanitizedIP);
         }
 
-        res.status(200).json(ip);
+        const ipObj = ip.toObject();
+        ipObj.hasLegacyFile = hasLegacyFile;
+        res.status(200).json(ipObj);
     } catch (error) {
         res.status(500).json({ error: error.message });
     }
@@ -232,7 +244,9 @@ exports.getIPFile = async (req, res) => {
         // Security check
         const userRole = req.user?.role?.toLowerCase();
         const isAdmin = userRole === 'admin' || userRole === 'verifier';
-        const isOwner = ip.owner._id ? ip.owner._id.equals(req.user?.id || req.user?._id) : ip.owner.equals(req.user?.id || req.user?._id);
+        const isOwner = (ip.owner._id ? ip.owner._id.equals(req.user?.id || req.user?._id) : ip.owner.equals(req.user?.id || req.user?._id)) ||
+                        ip.creators?.some(c => c.user._id ? c.user._id.equals(req.user?.id || req.user?._id) : c.user.equals(req.user?.id || req.user?._id));
+
         
         let hasLicense = false;
         try {
@@ -321,7 +335,7 @@ exports.updateIP = async (req, res) => {
             
             // Critical: Remove the QmMock designation so the UI recognizes the restoration
             if (ip.fileHash && ip.fileHash.startsWith('QmMock')) {
-                ip.fileHash = `QmRestored${crypto.randomBytes(16).toString('hex')}IPFS`;
+                ip.fileHash = `QmRestored${Math.random().toString(36).substring(2, 15)}IPFS`;
             }
         } else {
             // Keep old fileData if no new content is provided
@@ -519,7 +533,13 @@ exports.renewIP = async (req, res) => {
         const newExpiration = new Date(baseDate);
         newExpiration.setFullYear(newExpiration.getFullYear() + yearsToAdd);
 
-        const renewalCost = 1000 * yearsToAdd; 
+        const settings = await SystemSettings.findOne({ singleton: 'GLOBAL' });
+        let baseCostPerYear = 100; // Default fallback
+        if (settings && settings.pricingMatrix && settings.pricingMatrix[ip.category] !== undefined) {
+            baseCostPerYear = settings.pricingMatrix[ip.category];
+        }
+
+        const renewalCost = baseCostPerYear * yearsToAdd;
 
         ip.expirationDate = newExpiration;
         await ip.save();
@@ -531,7 +551,7 @@ exports.renewIP = async (req, res) => {
             assetTitle: ip.title,
             type: "Renewal Fee",
             amount: renewalCost,
-            status: "Debited",
+            status: "Completed",
             recipient: "System"
         });
 

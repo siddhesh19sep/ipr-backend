@@ -37,6 +37,16 @@ exports.createDispute = async (req, res) => {
         // Asynchronously dispatch the email
         sendEmail(ip.owner.email, subject, text);
 
+        // Create System Alert for Opponent
+        await Alert.create({
+            user: ip.owner._id,
+            title: "Dispute Filed!",
+            message: `${req.user.name} has filed a dispute against your asset: "${ip.title}".`,
+            type: "Dispute",
+            relatedId: ip._id
+        });
+
+
         res.status(201).json({
             message: "Dispute filed successfully",
             dispute

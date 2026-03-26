@@ -2,7 +2,8 @@ const express = require("express");
 const router = express.Router();
 const authMiddleware = require("../middleware/authMiddleware");
 const roleMiddleware = require("../middleware/roleMiddleware");
-const { getAdminStats, getCreatorStats } = require("../controllers/dashboardController");
+const { getAdminStats, getCreatorStats, getIPAnalytics } = require("../controllers/dashboardController");
+
 
 router.use(authMiddleware);
 
@@ -11,5 +12,9 @@ router.get("/admin", roleMiddleware(["Admin"]), getAdminStats);
 
 // Creator Analytics (Creators & Admins can access their own)
 router.get("/creator", getCreatorStats);
+
+// Individual IP Analytics
+router.get("/analytics/:ipId", getIPAnalytics);
+
 
 module.exports = router;

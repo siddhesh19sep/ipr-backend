@@ -4,6 +4,60 @@ const Dispute = require("../models/Dispute");
 const Transaction = require("../models/Transaction");
 const User = require("../models/User");
 
+// Get Analytics for a Specific IP Asset
+exports.getIPAnalytics = async (req, res) => {
+    try {
+        const { ipId } = req.params;
+        const userId = req.user.id;
+        
+        // Verify ownership/admin if needed? Or just public analytics?
+        // Usually, anyone can see public royalty performance in a blockchain app.
+        const ip = await IP.findById(ipId);
+        if (!ip) return res.status(404).json({ message: "Asset not found" });
+
+        const sixMonthsAgo = new Date();
+        sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 5);
+        sixMonthsAgo.setDate(1); // Start of month
+
+        const analyticsAggregation = await Transaction.aggregate([
+            { $match: { 
+                asset: new mongoose.Types.ObjectId(ipId),
+                createdAt: { $gte: sixMonthsAgo },
+                type: { $in: ["License Fee", "Usage Royalty", "License Purchase"] },
+                status: { $in: ["Credited", "Completed"] },
+                amount: { $gt: 0, $ne: 5000 } // Exclude mock credits
+            }},
+            { $group: { 
+                _id: { month: { $month: "$createdAt" }, year: { $year: "$createdAt" } },
+                amount: { $sum: "$amount" }
+            }},
+            { $sort: { "_id.year": 1, "_id.month": 1 } }
+        ]);
+
+        const monthsLabels = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+        
+        // Fill in missing months with 0
+        const result = [];
+        for (let i = 0; i < 6; i++) {
+            const date = new Date();
+            date.setMonth(date.getMonth() - (5 - i));
+            const monthIdx = date.getMonth();
+            const year = date.getFullYear();
+            
+            const match = analyticsAggregation.find(a => a._id.month === (monthIdx + 1) && a._id.year === year);
+            result.push({
+                month: monthsLabels[monthIdx],
+                amount: match ? match.amount : 0
+            });
+        }
+
+        res.status(200).json(result);
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+};
+
+
 // Get Admin Dashboard Stats
 exports.getAdminStats = async (req, res) => {
     try {
@@ -104,7 +158,13 @@ exports.getCreatorStats = async (req, res) => {
     try {
         const userId = req.user.id;
 
-        const myIPs = await IP.find({ owner: userId }).select("-fileData").sort({ createdAt: -1 });
+        const myIPs = await IP.find({ 
+            $or: [
+                { owner: userId },
+                { "creators.user": userId }
+            ]
+        }).select("-fileData").sort({ createdAt: -1 });
+
         const pendingIPs = myIPs.filter(ip => ip.status === 'Pending').length;
         const approvedIPs = myIPs.filter(ip => ip.status === 'Approved').length;
 

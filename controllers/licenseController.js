@@ -12,7 +12,7 @@ exports.purchaseLicense = async (req, res) => {
         const { ipId, licenseType, durationYears } = req.body;
         const buyerId = req.user.id;
 
-        const ip = await IP.findById(ipId).populate("owner");
+        const ip = await IP.findById(ipId).populate("owner").populate("creators.user");
         if (!ip) {
             return res.status(404).json({ message: "Asset not found" });
         }
@@ -54,26 +54,35 @@ exports.purchaseLicense = async (req, res) => {
             txId
         });
 
-        // 2. Record the Transaction for the Creator
-        await Transaction.create({
-            txId,
-            asset: ipId,
-            assetTitle: ip.title,
-            type: "License Fee",
-            amount: totalCost,
-            status: "Credited",
-            recipient: ip.owner._id,
-            licenseId: license._id
-        });
+        // 2. Record the Split Transactions for all Creators
+        const creators = ip.creators && ip.creators.length > 0 
+            ? ip.creators 
+            : [{ user: ip.owner, share: 100 }];
 
-        // 3. Create Alert for the Owner
-        await Alert.create({
-            user: ip.owner._id,
-            title: "New License Purchased",
-            message: `A new license has been purchased for your asset: ${ip.title}.`,
-            type: "License",
-            relatedId: license._id
-        });
+        for (const creator of creators) {
+            const creatorShareAmount = (totalCost * creator.share) / 100;
+            
+            await Transaction.create({
+                txId: `${txId}-${crypto.randomBytes(2).toString("hex").toUpperCase()}`,
+                asset: ipId,
+                assetTitle: ip.title,
+                type: "License Fee",
+                amount: creatorShareAmount,
+                status: "Credited",
+                recipient: creator.user._id || creator.user,
+                licenseId: license._id
+            });
+ 
+            // 3. Create Alert for the Creator
+            await Alert.create({
+                user: creator.user._id || creator.user,
+                title: "Royalty Earned",
+                message: `You earned ₹${creatorShareAmount.toLocaleString()} from a license purchase for "${ip.title}" (${creator.share}% share).`,
+                type: "License",
+                relatedId: license._id
+            });
+        }
+
 
         res.status(201).json({
             message: "License purchased successfully",
