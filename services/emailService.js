@@ -9,6 +9,9 @@ const RESEND_API_KEY = process.env.RESEND_API_KEY || "re_ehi3SAUC_6p3BraG9KkRppC
 const GMAIL_USER = process.env.EMAIL_USER;
 const GMAIL_PASS = process.env.EMAIL_PASS;
 
+// Brevo API Key (for universal delivery to any email)
+const BREVO_API_KEY = process.env.BREVO_API_KEY;
+
 // Track service status
 let transporterStatus = {
     provider: "Resend HTTPS API",
@@ -45,7 +48,31 @@ if (GMAIL_USER && GMAIL_PASS) {
  * @param {string} html - HTML email body (optional)
  */
 exports.sendEmail = async (to, subject, text, html = "") => {
-    // 1. Try Gmail SMTP first if configured (Verifid app password is most reliable)
+    // 1. Try Brevo API (BEST for Render: HTTPS + No Sandbox Recipient limits)
+    if (BREVO_API_KEY) {
+        try {
+            const response = await axios.post('https://api.brevo.com/v3/smtp/email', {
+                sender: { name: "IPR Protocol", email: GMAIL_USER || "siddheshkanse132@gmail.com" },
+                to: [{ email: to }],
+                subject: subject,
+                htmlContent: html || `<p>${text}</p>`
+            }, {
+                headers: {
+                    'api-key': BREVO_API_KEY,
+                    'Content-Type': 'application/json'
+                },
+                timeout: 10000
+            });
+
+            console.log(`[BREVO API] Success! Sent to ${to}`);
+            transporterStatus.provider = "Brevo HTTPS API";
+            return { success: true, id: response.data.messageId, provider: "brevo" };
+        } catch (brevoError) {
+            console.warn("[BREVO API] Failed:", brevoError.response?.data || brevoError.message);
+        }
+    }
+
+    // 2. Try Gmail SMTP (Reliable locally, but usually blocked on Render)
     if (gmailTransporter) {
         try {
             const info = await gmailTransporter.sendMail({
@@ -59,11 +86,11 @@ exports.sendEmail = async (to, subject, text, html = "") => {
             transporterStatus.provider = "Gmail SMTP";
             return { success: true, id: info.messageId, provider: "gmail" };
         } catch (gmailError) {
-            console.warn("[GMAIL SMTP] Failed, trying Resend API:", gmailError.message);
+            console.warn("[GMAIL SMTP] Failed (Likely Render Port Block):", gmailError.message);
         }
     }
 
-    // 2. Try Resend API (HTTPS bypasses port blocks, but Sandbox restricted)
+    // 3. Try Resend API (HTTPS bypasses port blocks, but Sandbox restricted)
     try {
         const response = await axios.post('https://api.resend.com/emails', {
             from: "IPR Secure Authentication <onboarding@resend.dev>",
@@ -75,7 +102,7 @@ exports.sendEmail = async (to, subject, text, html = "") => {
                 'Authorization': `Bearer ${RESEND_API_KEY}`,
                 'Content-Type': 'application/json'
             },
-            timeout: 10000 // 10 seconds
+            timeout: 10000
         });
 
         console.log(`[RESEND API] Sent email to ${to} | ID:`, response.data.id);
@@ -88,25 +115,15 @@ exports.sendEmail = async (to, subject, text, html = "") => {
         
         console.warn(`[RESEND API] HTTP ${status} | Failed to send email:`, JSON.stringify(errorData, null, 2));
         
-        if (status === 403 || status === 422) {
-            console.warn("[RESEND API] REASON: Key is Sandbox mode. ONLY verified emails work.");
-        }
-
-        // 3. MOCK FALLBACK (Only for development or clear infrastructure failure)
-        let failureReason = "SMTP_BLOCKED_OR_SANDBOX_RESTRICTION";
-        let suggestion = "If using Resend Sandbox, you must verify the recipient email in the Resend Dashboard.";
+        // Final Fallback: Diagnostic Info
+        let failureReason = "INFRASTRUCTURE_BLOCK";
+        let suggestion = "Render blocks SMTP ports. Resend API blocks unverified recipients in sandbox.";
         
         if (status === 422) {
             failureReason = "RESEND_SANDBOX_UNVERIFIED_RECIPIENT";
-            suggestion = "Resend Sandbox only sends to verified emails. Please verify this email at resend.com/emails or use your own account email.";
+            suggestion = "Resend Sandbox only sends to your account email. Please verify this email at resend.com or use a Brevo API Key.";
         }
 
-        console.log("\n--- [DELIVERY FAILURE DIAGNOSTIC] ---");
-        console.log(`To: ${to}`);
-        console.log(`Error: ${resendError.message}`);
-        console.log(`Suggestion: ${suggestion}`);
-        console.log("------------------------------------\n");
-        
         return { 
             mock: true, 
             id: "fail_" + Date.now(),
