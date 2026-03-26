@@ -56,8 +56,14 @@ exports.sendEmail = async (to, subject, text, html = "") => {
         return response.data;
 
     } catch (resendError) {
+        const status = resendError.response?.status;
         const errorData = resendError.response?.data || resendError.message;
-        console.warn("[RESEND API] Failed to send email, attempting Gmail fallback:", JSON.stringify(errorData, null, 2));
+        
+        console.warn(`[RESEND API] HTTP ${status} | Failed to send email:`, JSON.stringify(errorData, null, 2));
+        
+        if (status === 403 || status === 422) {
+            console.warn("[RESEND API] This usually means your Resend key is in Sandbox mode and can only send to yourself.");
+        }
 
         // 2. Fallback to Gmail if configured
         if (gmailTransporter) {
