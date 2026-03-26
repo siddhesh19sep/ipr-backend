@@ -10,7 +10,7 @@ const contractABI = JSON.parse(fs.readFileSync(contractABIPath, "utf8"));
 
 // Using Polygon Amoy RPC URL from environment variables
 // Replace with Alchemy/Infura URL in .env
-const rpcUrl = process.env.BLOCKCHAIN_RPC_URL;
+const rpcUrl = process.env.BLOCKCHAIN_RPC_URL || "https://rpc-amoy.polygon.technology";
 
 // Getting the private key from .env
 const privateKey = process.env.BLOCKCHAIN_PRIVATE_KEY;
