@@ -29,7 +29,9 @@ class BlockchainService {
         try {
             this.provider = new ethers.JsonRpcProvider(rpcUrl);
             this.wallet = new ethers.Wallet(privateKey, this.provider);
-            this.contract = new ethers.Contract(contractAddress, contractABI, this.wallet);
+            // Ensure the address is correctly checksummed for ethers v6
+            const checksummedAddress = ethers.getAddress(contractAddress);
+            this.contract = new ethers.Contract(checksummedAddress, contractABI, this.wallet);
             this.isSimulated = false;
         } catch (e) {
             console.error("Blockchain provider initialization failed. Falling back to simulation mode.");
