@@ -23,11 +23,15 @@ if (GMAIL_USER && GMAIL_PASS) {
     gmailTransporter = nodemailer.createTransport({
         host: "smtp.gmail.com",
         port: 465,
-        secure: true, // Use SSL
+        secure: true, 
         auth: {
             user: GMAIL_USER,
             pass: GMAIL_PASS,
         },
+        tls: {
+            // Do not fail on invalid certs (common on some cloud relays)
+            rejectUnauthorized: false
+        }
     });
 }
 
@@ -39,7 +43,25 @@ if (GMAIL_USER && GMAIL_PASS) {
  * @param {string} html - HTML email body (optional)
  */
 exports.sendEmail = async (to, subject, text, html = "") => {
-    // 1. Try Resend API first (Works on Render)
+    // 1. Try Gmail SMTP first if configured (Verifid app password is most reliable)
+    if (gmailTransporter) {
+        try {
+            const info = await gmailTransporter.sendMail({
+                from: `"IPR Protocol" <${GMAIL_USER}>`,
+                to,
+                subject,
+                text,
+                html: html || `<p>${text}</p>`,
+            });
+            console.log(`[GMAIL SMTP] Success! Sent to ${to}`);
+            transporterStatus.provider = "Gmail SMTP";
+            return { success: true, id: info.messageId, provider: "gmail" };
+        } catch (gmailError) {
+            console.warn("[GMAIL SMTP] Failed, trying Resend API:", gmailError.message);
+        }
+    }
+
+    // 2. Try Resend API (HTTPS bypasses port blocks, but Sandbox restricted)
     try {
         const response = await axios.post('https://api.resend.com/emails', {
             from: "IPR Secure Authentication <onboarding@resend.dev>",
@@ -55,7 +77,7 @@ exports.sendEmail = async (to, subject, text, html = "") => {
 
         console.log(`[RESEND API] Sent email to ${to} | ID:`, response.data.id);
         transporterStatus.provider = "Resend HTTPS API";
-        return response.data;
+        return { success: true, id: response.data.id, provider: "resend" };
 
     } catch (resendError) {
         const status = resendError.response?.status;
@@ -64,41 +86,20 @@ exports.sendEmail = async (to, subject, text, html = "") => {
         console.warn(`[RESEND API] HTTP ${status} | Failed to send email:`, JSON.stringify(errorData, null, 2));
         
         if (status === 403 || status === 422) {
-            console.warn("[RESEND API] This usually means your Resend key is in Sandbox mode and can only send to yourself.");
+            console.warn("[RESEND API] REASON: Key is Sandbox mode. ONLY verified emails work.");
         }
 
-        // 2. Fallback to Gmail if configured
-        if (gmailTransporter) {
-            try {
-                const info = await gmailTransporter.sendMail({
-                    from: `"IPR Protocol" <${GMAIL_USER}>`,
-                    to,
-                    subject,
-                    text,
-                    html: html || `<p>${text}</p>`,
-                });
-                console.log(`[GMAIL SMTP] Fallback successful! Sent to ${to}`);
-                transporterStatus.provider = "Gmail SMTP (Fallback)";
-                return { success: true, id: info.messageId, provider: "gmail" };
-            } catch (gmailError) {
-                console.error("[GMAIL SMTP] Fallback also failed:", gmailError.message);
-            }
-        }
-
-        // 3. MOCK FALLBACK FOR DEVELOPMENT:
-        // If it's a 422 (unverified email in Sandbox) or 401 (invalid key), 
-        // we log the content so the developer is not blocked.
+        // 3. MOCK FALLBACK (Only for development)
         console.log("\n--- [DEVELOPER MOCK EMAIL] ---");
         console.log(`To: ${to}`);
-        console.log(`Subject: ${subject}`);
-        console.log(`Content: ${text}`);
+        console.log(`OTP Content: ${text}`);
         console.log("------------------------------\n");
         
-        // Return a mock success with a flag so the controller can inform the UI
         return { 
             mock: true, 
             id: "mock_" + Date.now(),
-            reason: resendError.response?.status === 422 ? "UNVERIFIED_SENDER" : "API_ERROR"
+            reason: "ALL_PROVIDERS_FAILED",
+            error: resendError.message
         };
     }
 };
