@@ -32,6 +32,10 @@ const licenseSchema = new mongoose.Schema({
     txId: {
         type: String, // Internal Transaction ID reference
         required: true
+    },
+    blockchainTxHash: {
+        type: String, // Polygon Transaction Hash
+        required: false
     }
 }, { timestamps: true });
 

@@ -180,8 +180,15 @@ exports.getCreatorStats = async (req, res) => {
         const transactions = await Transaction.find({ recipient: userId });
         
         // Calculate REAL Earnings (License Fees + Usage Royalties, excluding mock 5000 credits)
+        // Sync with trend logic: Include Credited, Completed, and Pending for "Real Time" feel, or just Credited/Completed for "Settled"
+        const allowedStatuses = ["Credited", "Completed", "Pending"]; // Including Pending as user sees them in history
         const totalEarnings = transactions
-            .filter(t => ["License Fee", "Usage Royalty"].includes(t.type) && t.amount > 0 && t.amount !== 5000)
+            .filter(t => 
+                ["License Fee", "Usage Royalty"].includes(t.type) && 
+                t.amount > 0 && 
+                t.amount !== 5000 &&
+                allowedStatuses.includes(t.status)
+            )
             .reduce((acc, tx) => acc + tx.amount, 0);
 
         // Calculate Portfolio Valuation (Sum of mock 5000 credits)
@@ -204,7 +211,8 @@ exports.getCreatorStats = async (req, res) => {
             { $match: { 
                 recipient: new mongoose.Types.ObjectId(userId),
                 createdAt: { $gte: sixMonthsAgo },
-                status: { $in: ["Credited", "Completed"] },
+                status: { $in: allowedStatuses },
+                type: { $in: ["License Fee", "Usage Royalty"] }, // Added explicit type filter to match totalEarnings
                 amount: { $gt: 0, $ne: 5000 } // Exclude legacy mock credits
             }},
             { $group: { 
@@ -215,10 +223,21 @@ exports.getCreatorStats = async (req, res) => {
         ]);
 
         const monthsLabels = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-        const royaltyTrend = incomeTrend.map(r => ({
-            month: monthsLabels[r._id.month - 1],
-            amount: r.amount
-        }));
+        
+        // Fill in missing months with 0 to ensure a smooth 6-month graph
+        const royaltyTrend = [];
+        for (let i = 0; i < 6; i++) {
+            const date = new Date();
+            date.setMonth(date.getMonth() - (5 - i));
+            const monthIdx = date.getMonth();
+            const year = date.getFullYear();
+            
+            const match = incomeTrend.find(a => a._id.month === (monthIdx + 1) && a._id.year === year);
+            royaltyTrend.push({
+                month: monthsLabels[monthIdx],
+                amount: match ? match.amount : 0
+            });
+        }
 
         res.status(200).json({
             stats: {

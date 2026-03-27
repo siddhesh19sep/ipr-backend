@@ -38,6 +38,10 @@ const transactionSchema = new mongoose.Schema({
         type: mongoose.Schema.Types.ObjectId,
         ref: "User",
         required: true
+    },
+    blockchainTxHash: {
+        type: String, // Polygon Transaction Hash
+        required: false
     }
 }, { timestamps: true });
 

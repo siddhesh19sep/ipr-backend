@@ -6,8 +6,8 @@ const User = require('./models/User');
 
 async function check() {
     try {
-        await mongoose.connect('mongodb://127.0.0.1:27017/ipr-blockchain'); // Assuming local based on previous context
-        console.log('Connected to DB');
+        await mongoose.connect(process.env.MONGO_URI);
+        console.log('Connected to Atlas DB');
 
         const ipCount = await IP.countDocuments();
         const txCount = await Transaction.countDocuments();

@@ -96,6 +96,25 @@ exports.purchaseLicense = async (req, res) => {
             licenseId: license._id
         });
 
+        // 5. Anchor the Royalty Distribution Event on the Blockchain
+        try {
+            const blockchainService = require("../services/blockchainService");
+            const royaltyHash = crypto.createHash('sha256').update(`${txId}-${Date.now()}`).digest('hex');
+            const polygonTxHash = await blockchainService.recordOnChainEvent(royaltyHash);
+            
+            // Save the Polygon Tx Hash to the license and relevant transactions if needed
+            license.blockchainTxHash = polygonTxHash;
+            await license.save();
+
+            // Update all related transactions with this blockchain hash for audit trail
+            await Transaction.updateMany(
+                { licenseId: license._id },
+                { $set: { blockchainTxHash: polygonTxHash } }
+            );
+        } catch (bcError) {
+            console.error("Failed to anchor royalty event to blockchain:", bcError);
+            // We don't fail the whole request since the DB record is already saved
+        }
 
         res.status(201).json({
             message: "License purchased successfully",

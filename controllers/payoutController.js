@@ -78,10 +78,20 @@ exports.requestPayout = async (req, res) => {
         });
 
         await payoutTx.save();
-
-        // In a real scenario, we would trigger Razorpay Payouts here.
-        // For now, we simulate completion after a delay or just leave it as Processing.
         
+        // Anchor the Payout Request on the Blockchain
+        try {
+            const blockchainService = require("../services/blockchainService");
+            const crypto = require("crypto");
+            const payoutHash = crypto.createHash('sha256').update(`PAYOUT-${payoutTx.txId}-${Date.now()}`).digest('hex');
+            const polygonTxHash = await blockchainService.recordOnChainEvent(payoutHash);
+            
+            payoutTx.blockchainTxHash = polygonTxHash;
+            await payoutTx.save();
+        } catch (bcError) {
+            console.error("Failed to anchor payout event to blockchain:", bcError);
+        }
+
         res.status(201).json({ 
             message: "Payout request submitted successfully", 
             transaction: payoutTx 
