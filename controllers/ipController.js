@@ -1,5 +1,6 @@
 const IP = require("../models/IP");
 const mongoose = require("mongoose");
+const License = require("../models/License"); // Explicitly require License model
 const User = require("../models/User");
 const Alert = require("../models/Alert");
 const Transaction = require("../models/Transaction");
@@ -81,15 +82,26 @@ exports.createIP = async (req, res) => {
             if (Math.round(totalShare) !== 100) {
                 return res.status(400).json({ message: `Total creator shares must sum to 100%. Current total: ${totalShare}%` });
             }
+
+            // Determine primary owner based on highest share
+            let maxShare = -1;
+            for (const c of creatorsList) {
+                if (c.share > maxShare) {
+                    maxShare = c.share;
+                    const ownerCandidate = c.user._id || c.user;
+                    primaryOwnerId = ownerCandidate;
+                }
+            }
         } else {
             // Default to 100% for the primary owner
             creatorsList = [{ user: req.user.id, share: 100 }];
+            primaryOwnerId = req.user.id;
         }
 
         const newIP = await IP.create({
             title,
             description,
-            owner: req.user.id,
+            owner: primaryOwnerId,
             creators: creatorsList,
             fileHash: ipfsHash,
 
@@ -196,8 +208,12 @@ exports.getIPById = async (req, res) => {
         
         let hasLicense = false;
         try {
-            const License = mongoose.model("License");
-            const licenseDoc = await License.findOne({ ip: ip._id, licensee: req.user?.id || req.user?._id, status: "Active" });
+            const licenseDoc = await License.findOne({ 
+                ipId: ip._id, 
+                user: req.user?.id || req.user?._id, 
+                status: "Active",
+                expiresAt: { $gt: new Date() } 
+            });
             hasLicense = !!licenseDoc;
         } catch (e) {
             console.error("License check error:", e);
@@ -235,7 +251,10 @@ exports.getDiagnostics = async (req, res) => {
 // Get only the file data (lazy load)
 exports.getIPFile = async (req, res) => {
     try {
-        const ip = await IP.findById(req.params.id).select("fileData gridFsId owner isAvailableForLicense status");
+        const ip = await IP.findById(req.params.id)
+            .select("fileData gridFsId owner isAvailableForLicense status creators")
+            .populate("owner", "_id")
+            .populate("creators.user", "_id");
         
         if (!ip) {
             return res.status(404).json({ message: "IP record not found" });
@@ -250,8 +269,12 @@ exports.getIPFile = async (req, res) => {
         
         let hasLicense = false;
         try {
-            const License = mongoose.model("License");
-            const licenseDoc = await License.findOne({ ip: ip._id, licensee: req.user?.id || req.user?._id, status: "Active" });
+            const licenseDoc = await License.findOne({ 
+                ipId: ip._id, 
+                user: req.user?.id || req.user?._id, 
+                status: "Active",
+                expiresAt: { $gt: new Date() } 
+            });
             hasLicense = !!licenseDoc;
         } catch (e) {
             console.error("License check error:", e);

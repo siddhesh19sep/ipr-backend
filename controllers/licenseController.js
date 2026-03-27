@@ -83,6 +83,19 @@ exports.purchaseLicense = async (req, res) => {
             });
         }
 
+        // 4. Record the Debit Transaction for the Buyer (Licensee)
+        // This ensures the purchase shows up in their transaction history
+        await Transaction.create({
+            txId: `${txId}-PAYMENT`,
+            asset: ipId,
+            assetTitle: ip.title,
+            type: "License Fee",
+            amount: -totalCost, // Negative represents a debit/payment
+            status: "Completed",
+            recipient: buyerId, // In this schema, recipient denotes the ledger owner
+            licenseId: license._id
+        });
+
 
         res.status(201).json({
             message: "License purchased successfully",
