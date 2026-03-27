@@ -71,7 +71,7 @@ exports.getAdminStats = async (req, res) => {
         
         // Royalty revenue for the platform (optional) - Exclude legacy mock credits (5000)
         const royaltyRevenue = transactions
-            .filter(t => ["License Fee", "Usage Royalty"].includes(t.type) && t.amount > 0 && t.amount !== 5000)
+            .filter(t => ["License Fee", "Usage Royalty", "License Purchase"].includes(t.type) && t.amount > 0 && t.amount !== 5000)
             .reduce((acc, tx) => acc + tx.amount, 0);
             
         // Registration revenue (Platform Income specifically for Admin)
@@ -184,7 +184,7 @@ exports.getCreatorStats = async (req, res) => {
         const allowedStatuses = ["Credited", "Completed", "Pending"]; // Including Pending as user sees them in history
         const totalEarnings = transactions
             .filter(t => 
-                ["License Fee", "Usage Royalty"].includes(t.type) && 
+                ["License Fee", "Usage Royalty", "License Purchase"].includes(t.type) && 
                 t.amount > 0 && 
                 t.amount !== 5000 &&
                 allowedStatuses.includes(t.status)
@@ -212,7 +212,7 @@ exports.getCreatorStats = async (req, res) => {
                 recipient: new mongoose.Types.ObjectId(userId),
                 createdAt: { $gte: sixMonthsAgo },
                 status: { $in: allowedStatuses },
-                type: { $in: ["License Fee", "Usage Royalty"] }, // Added explicit type filter to match totalEarnings
+                type: { $in: ["License Fee", "Usage Royalty", "License Purchase"] }, // Added explicit type filter to match totalEarnings
                 amount: { $gt: 0, $ne: 5000 } // Exclude legacy mock credits
             }},
             { $group: { 
